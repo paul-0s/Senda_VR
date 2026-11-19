@@ -7343,53 +7343,13 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::PlayerController
   cameraOffset: {fileID: 1247576043}
   playerCamera: {fileID: 1809184056}
-  velocidadCaminar: 2.86
-  velocidadTrotar: 3.62
-  velocidadCorrer: 6.1
-  velocidadAgachado: 1.21
-  aceleracionSuelo: 10
-  aceleracionAire: 10
-  topeVelocidadAire: 0.57
-  friccion: 4
-  velocidadFrenado: 1.9
-  multiplicadorFriccionBorde: 2
-  gravedad: 11.43
-  velocidadSalto: 3.05
-  saltoAutomatico: 0
-  ventanaFrenado: 0.015
-  pendienteMaxima: 45.6
-  alturaEscalon: 0.34
-  alturaDePie: 1.8
-  alturaAgachado: 1
-  alturaOjos: 1.7
-  alturaOjosAgachado: 0.9
-  tiempoAgacharse: 0.2
-  sensibilidadMouse: 0.1
-  limiteMirada: 89
-  anguloInclinacion: 1.5
-  velocidadInclinacion: 3.8
-  balanceoActivo: 1
-  balanceoVertical: 0.035
-  balanceoLateral: 0.02
-  balanceoGiro: 0.6
-  suavizadoBalanceo: 8
-  golpeAterrizaje: 0.12
-  balanceoEnVR: 0
-  largoPasoCaminando: 1.1
-  largoPasoCorriendo: 1.85
-  largoPasoAgachado: 0.6
-  velocidadMinimaPasos: 0.5
-  superficies:
-  - nombre: Por defecto
-    materialesFisicos: []
-    capasTerreno: []
-    pasos: []
-    pasosCorriendo: []
-    saltos: []
-    aterrizajes: []
-    volumenCaminando: 0.5
-    volumenCorriendo: 0.9
-  fuenteAudio: {fileID: 0}
+  walkSpeed: 2.5
+  sprintSpeed: 4.5
+  gravity: -9.81
+  jumpHeight: 1
+  mouseSensitivity: 0.1
+  maxPitch: 85
+  eyeHeight: 1.7
   snapTurnAngle: 30
 --- !u!143 &964113623
 CharacterController:
@@ -11921,7 +11881,7 @@ MonoBehaviour:
   esperaMaximaIntro: 15
   retrasoPrimeraVez: 1.2
   retrasoAlVolver: 0.15
-  escenaSiguiente: 
+  escenaSiguiente: Cuarto
   pantallaCarga: {fileID: 1958046949}
 --- !u!1 &1658775577
 GameObject:
