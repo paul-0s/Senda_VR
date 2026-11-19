@@ -8,6 +8,8 @@ using UnityEngine;
 /// Toma el mesh del camino (sendaMap) y moldea un Terrain de Unity a su alrededor:
 ///  - debajo del camino, el terreno queda pegado justo bajo el mesh;
 ///  - a los lados hay una franja plana (la orilla del sendero);
+///  - entre tramos del camino a distinta altura, el terreno forma una ladera suave
+///    (se rellena como una tela estirada entre los tramos, sin muros);
 ///  - más allá, el terreno sube con cerros generados con ruido.
 /// Opcionalmente pinta el camino con una capa de textura del terreno.
 ///
@@ -25,10 +27,12 @@ public class TerrenoAlrededorDelCamino : EditorWindow
 
     [SerializeField] float hundir = 0.15f;
     [SerializeField] float anchoBorde = 2f;
-    [SerializeField] float anchoTransicion = 25f;
-    [SerializeField] float alturaCerros = 25f;
-    [SerializeField] float tamanoCerros = 80f;
-    [SerializeField] float pendiente = 0.1f;
+    [SerializeField] float anchoLadera = 40f;
+    [SerializeField] float anchoTransicion = 50f;
+    [SerializeField] float alturaCerros = 15f;
+    [SerializeField] float tamanoCerros = 150f;
+    [SerializeField] float pendiente = 0.05f;
+    [SerializeField] float pulido = 3f;
     [SerializeField] int semilla = 1;
 
     [SerializeField] bool pintarCamino = true;
@@ -78,18 +82,27 @@ public class TerrenoAlrededorDelCamino : EditorWindow
             "Cuánto queda el terreno por debajo del mesh del camino, para que no lo tape."), hundir, 0f, 1f);
         anchoBorde = EditorGUILayout.Slider(new GUIContent("Orilla plana (m)",
             "Franja plana a cada lado del camino antes de que empiece a subir el cerro."), anchoBorde, 0f, 10f);
+        anchoLadera = EditorGUILayout.Slider(new GUIContent("Ancho de ladera (m)",
+            "Qué tan lejos del camino se mantiene su altura antes de empezar a bajar o subir. Más grande = laderas más largas y suaves (y sin pedestal al final del camino)."), anchoLadera, 0f, 150f);
         anchoTransicion = EditorGUILayout.Slider(new GUIContent("Transición (m)",
-            "En cuántos metros pasa de plano a cerro. Más grande = más suave."), anchoTransicion, 1f, 100f);
+            "En cuántos metros pasa de plano a cerro. Más grande = más suave."), anchoTransicion, 1f, 200f);
         alturaCerros = EditorGUILayout.Slider(new GUIContent("Altura de cerros (m)",
             "Qué tan altos son los cerros generados con ruido."), alturaCerros, 0f, 150f);
         tamanoCerros = EditorGUILayout.Slider(new GUIContent("Tamaño de cerros (m)",
             "Ancho aproximado de cada cerro. Más grande = cerros más anchos y suaves."), tamanoCerros, 10f, 300f);
         pendiente = EditorGUILayout.Slider(new GUIContent("Pendiente",
             "Metros que sube el terreno por cada metro que te alejas del camino. Negativo = baja (como quebrada)."), pendiente, -0.5f, 0.8f);
+        pulido = EditorGUILayout.Slider(new GUIContent("Pulido final (m)",
+            "Suaviza todo el terreno al final (sin tocar el camino) para quitar bordes duros. 0 = sin pulir."), pulido, 0f, 15f);
         using (new EditorGUILayout.HorizontalScope())
         {
             semilla = EditorGUILayout.IntField(new GUIContent("Semilla", "Cambia el número para obtener otros cerros."), semilla);
             if (GUILayout.Button("Otra", GUILayout.Width(50))) semilla = Random.Range(1, 99999);
+        }
+        if (GUILayout.Button("Usar valores de cerro suave"))
+        {
+            anchoBorde = 2f; anchoLadera = 40f; anchoTransicion = 50f; alturaCerros = 15f;
+            tamanoCerros = 150f; pendiente = 0.05f; pulido = 3f;
         }
 
         EditorGUILayout.Space();
@@ -265,9 +278,36 @@ public class TerrenoAlrededorDelCamino : EditorWindow
                 }
             }
 
-            // 5. Calcular alturas
-            EditorUtility.DisplayProgressBar("Terreno del camino", "Levantando cerros...", 0.6f);
-            var alturas = new float[res, res];
+            // 5. Altura base, en dos capas:
+            //    a) una "guía": la altura del camino más cercano, desenfocada (sin saltos);
+            //    b) una "tela" estirada (ecuación de Laplace) que corrige la diferencia entre
+            //       la guía y el camino real, dejando el camino exacto y sin muros entre tramos.
+            //    La guía evita que el terreno caiga de golpe donde el camino queda aislado
+            //    (por ejemplo, en la punta final), que formaba un pedestal.
+            EditorUtility.DisplayProgressBar("Terreno del camino", "Calculando la altura general...", 0.45f);
+            var fijo = new bool[n];
+            var guia = new float[n];
+            for (int i = 0; i < n; i++)
+            {
+                fijo[i] = caminoY[i] > float.NegativeInfinity;
+                guia[i] = caminoY[fuente[i]] - hundir;
+            }
+            if (anchoLadera > 0f)
+                Desenfocar(guia, res, Mathf.Clamp(Mathf.RoundToInt(anchoLadera / cx), 1, res / 2), 3);
+
+            EditorUtility.DisplayProgressBar("Terreno del camino", "Estirando la ladera entre los tramos...", 0.5f);
+            var residuo = new float[n];
+            for (int i = 0; i < n; i++)
+                residuo[i] = fijo[i] ? (caminoY[i] - hundir) - guia[i] : 0f;
+            residuo = RellenarSuave(residuo, fijo, res);
+
+            var baseY = new float[n];
+            for (int i = 0; i < n; i++)
+                baseY[i] = fijo[i] ? caminoY[i] - hundir : guia[i] + residuo[i];
+
+            // 6. Sumar los cerros
+            EditorUtility.DisplayProgressBar("Terreno del camino", "Levantando cerros...", 0.7f);
+            var alturaMundo = new float[n];
             var distancia = new float[n];
             var rng = new System.Random(semilla);
             float ox = (float)rng.NextDouble() * 10000f;
@@ -278,30 +318,44 @@ public class TerrenoAlrededorDelCamino : EditorWindow
             for (int x = 0; x < res; x++)
             {
                 int i = z * res + x;
-                float h;
-                if (caminoY[i] > float.NegativeInfinity)
+                if (fijo[i])
                 {
-                    h = caminoY[i] - hundir;
+                    alturaMundo[i] = baseY[i];
                     distancia[i] = 0f;
+                    continue;
                 }
-                else
-                {
-                    int s = fuente[i];
-                    int sx = s % res, sz = s / res;
-                    float ddx = (x - sx) * cx, ddz = (z - sz) * cz;
-                    float d = Mathf.Sqrt(ddx * ddx + ddz * ddz);
-                    distancia[i] = d;
+                int s = fuente[i];
+                int sx = s % res, sz = s / res;
+                float ddx = (x - sx) * cx, ddz = (z - sz) * cz;
+                float d = Mathf.Sqrt(ddx * ddx + ddz * ddz);
+                distancia[i] = d;
 
-                    float fuera = Mathf.Max(0f, d - anchoBorde);
-                    float t = Mathf.SmoothStep(0f, 1f, fuera / Mathf.Max(0.01f, anchoTransicion));
-                    float ruido = Fbm((pos.x + x * cx) * frecuencia + ox, (pos.z + z * cz) * frecuencia + oz);
-                    h = caminoY[s] - hundir + t * (ruido * alturaCerros + fuera * pendiente);
-                }
-                alturas[z, x] = Mathf.Clamp01((h - pos.y) / tam.y);
+                float fuera = Mathf.Max(0f, d - anchoBorde);
+                float t = Mathf.SmoothStep(0f, 1f, fuera / Mathf.Max(0.01f, anchoTransicion));
+                float ruido = Fbm((pos.x + x * cx) * frecuencia + ox, (pos.z + z * cz) * frecuencia + oz);
+                alturaMundo[i] = baseY[i] + t * (ruido * alturaCerros + fuera * pendiente);
             }
+
+            // 7. Pulido final: suavizar todo menos el camino y su orilla
+            if (pulido > 0f)
+            {
+                EditorUtility.DisplayProgressBar("Terreno del camino", "Puliendo...", 0.8f);
+                var pulida = (float[])alturaMundo.Clone();
+                Desenfocar(pulida, res, Mathf.Max(1, Mathf.RoundToInt(pulido / cx)), 3);
+                for (int i = 0; i < n; i++)
+                {
+                    float w = Mathf.SmoothStep(0f, 1f, (distancia[i] - anchoBorde) / 5f);
+                    alturaMundo[i] = Mathf.Lerp(alturaMundo[i], pulida[i], w);
+                }
+            }
+
+            var alturas = new float[res, res];
+            for (int z = 0; z < res; z++)
+            for (int x = 0; x < res; x++)
+                alturas[z, x] = Mathf.Clamp01((alturaMundo[z * res + x] - pos.y) / tam.y);
             data.SetHeights(0, 0, alturas);
 
-            // 6. Pintar el camino
+            // 8. Pintar el camino
             if (pintarCamino)
             {
                 EditorUtility.DisplayProgressBar("Terreno del camino", "Pintando el camino...", 0.85f);
@@ -367,17 +421,138 @@ public class TerrenoAlrededorDelCamino : EditorWindow
         }
     }
 
-    // Ruido con varias capas de detalle (cerros grandes + lomitas chicas). Devuelve 0..1.
+    // Ruido para los cerros: sobre todo formas grandes y redondas, con poco detalle chico. Devuelve 0..1.
     static float Fbm(float x, float z)
     {
-        float suma = 0f, amp = 0.5f, f = 1f, total = 0f;
-        for (int o = 0; o < 4; o++)
+        float suma = 0f, amp = 0.6f, f = 1f, total = 0f;
+        for (int o = 0; o < 3; o++)
         {
             suma += amp * Mathf.PerlinNoise(x * f, z * f);
             total += amp;
-            amp *= 0.5f;
+            amp *= 0.35f;
             f *= 2f;
         }
         return suma / total;
+    }
+
+    // ------------------------------------------------------------------ Relleno suave (Laplace)
+
+    // Rellena los puntos no fijos con la superficie más suave posible que pasa por los fijos,
+    // como una tela estirada. Trabaja de grueso a fino para que sea rápido.
+    static float[] RellenarSuave(float[] valores, bool[] fijo, int res)
+    {
+        // Pirámide de resoluciones: res, (res-1)/2+1, ... hasta ~33
+        var resoluciones = new List<int> { res };
+        var niveles = new List<float[]> { valores };
+        var fijos = new List<bool[]> { fijo };
+        while (resoluciones[resoluciones.Count - 1] > 33 && (resoluciones[resoluciones.Count - 1] - 1) % 2 == 0)
+        {
+            int r = resoluciones[resoluciones.Count - 1];
+            int rc = (r - 1) / 2 + 1;
+            float[] vf = niveles[niveles.Count - 1];
+            bool[] ff = fijos[fijos.Count - 1];
+            var vc = new float[rc * rc];
+            var fc = new bool[rc * rc];
+            for (int zc = 0; zc < rc; zc++)
+            for (int xc = 0; xc < rc; xc++)
+            {
+                float suma = 0f; int cuenta = 0;
+                for (int dz = -1; dz <= 1; dz++)
+                for (int dx = -1; dx <= 1; dx++)
+                {
+                    int x = xc * 2 + dx, z = zc * 2 + dz;
+                    if (x < 0 || z < 0 || x >= r || z >= r) continue;
+                    int i = z * r + x;
+                    if (ff[i]) { suma += vf[i]; cuenta++; }
+                }
+                if (cuenta > 0) { fc[zc * rc + xc] = true; vc[zc * rc + xc] = suma / cuenta; }
+            }
+            resoluciones.Add(rc); niveles.Add(vc); fijos.Add(fc);
+        }
+
+        // Nivel más grueso: partir del promedio y relajar muchas veces
+        int ultimo = resoluciones.Count - 1;
+        float promedio = 0f; int nf = 0;
+        for (int i = 0; i < niveles[ultimo].Length; i++) if (fijos[ultimo][i]) { promedio += niveles[ultimo][i]; nf++; }
+        promedio = nf > 0 ? promedio / nf : 0f;
+        float[] sol = new float[niveles[ultimo].Length];
+        for (int i = 0; i < sol.Length; i++) sol[i] = fijos[ultimo][i] ? niveles[ultimo][i] : promedio;
+        Relajar(sol, fijos[ultimo], resoluciones[ultimo], 600);
+
+        // Subir de nivel: ampliar y relajar
+        for (int l = ultimo - 1; l >= 0; l--)
+        {
+            int r = resoluciones[l], rc = resoluciones[l + 1];
+            var fino = new float[r * r];
+            for (int z = 0; z < r; z++)
+            for (int x = 0; x < r; x++)
+            {
+                int i = z * r + x;
+                if (fijos[l][i]) { fino[i] = niveles[l][i]; continue; }
+                float gx = x * 0.5f, gz = z * 0.5f;
+                int x0 = Mathf.Min((int)gx, rc - 2), z0 = Mathf.Min((int)gz, rc - 2);
+                float tx = gx - x0, tz = gz - z0;
+                float a = Mathf.Lerp(sol[z0 * rc + x0], sol[z0 * rc + x0 + 1], tx);
+                float b = Mathf.Lerp(sol[(z0 + 1) * rc + x0], sol[(z0 + 1) * rc + x0 + 1], tx);
+                fino[i] = Mathf.Lerp(a, b, tz);
+            }
+            sol = fino;
+            Relajar(sol, fijos[l], r, l == 0 ? 40 : 80);
+        }
+        return sol;
+    }
+
+    // Gauss-Seidel con sobre-relajación: cada punto libre se acerca al promedio de sus 4 vecinos.
+    static void Relajar(float[] v, bool[] fijo, int r, int iteraciones)
+    {
+        const float omega = 1.8f;
+        for (int it = 0; it < iteraciones; it++)
+        {
+            for (int z = 0; z < r; z++)
+            {
+                int zArriba = z > 0 ? z - 1 : z, zAbajo = z < r - 1 ? z + 1 : z;
+                for (int x = 0; x < r; x++)
+                {
+                    int i = z * r + x;
+                    if (fijo[i]) continue;
+                    int xIzq = x > 0 ? x - 1 : x, xDer = x < r - 1 ? x + 1 : x;
+                    float prom = 0.25f * (v[z * r + xIzq] + v[z * r + xDer] + v[zArriba * r + x] + v[zAbajo * r + x]);
+                    v[i] += omega * (prom - v[i]);
+                }
+            }
+        }
+    }
+
+    // Desenfoque de caja (varias pasadas ≈ desenfoque gaussiano).
+    static void Desenfocar(float[] a, int res, int radio, int pasadas)
+    {
+        var tmp = new float[a.Length];
+        float inv = 1f / (2 * radio + 1);
+        for (int p = 0; p < pasadas; p++)
+        {
+            // horizontal: a -> tmp
+            for (int z = 0; z < res; z++)
+            {
+                int fila = z * res;
+                float suma = 0f;
+                for (int k = -radio; k <= radio; k++) suma += a[fila + Mathf.Clamp(k, 0, res - 1)];
+                for (int x = 0; x < res; x++)
+                {
+                    tmp[fila + x] = suma * inv;
+                    suma += a[fila + Mathf.Min(x + radio + 1, res - 1)] - a[fila + Mathf.Max(x - radio, 0)];
+                }
+            }
+            // vertical: tmp -> a
+            for (int x = 0; x < res; x++)
+            {
+                float suma = 0f;
+                for (int k = -radio; k <= radio; k++) suma += tmp[Mathf.Clamp(k, 0, res - 1) * res + x];
+                for (int z = 0; z < res; z++)
+                {
+                    a[z * res + x] = suma * inv;
+                    suma += tmp[Mathf.Min(z + radio + 1, res - 1) * res + x] - tmp[Mathf.Max(z - radio, 0) * res + x];
+                }
+            }
+        }
     }
 }
