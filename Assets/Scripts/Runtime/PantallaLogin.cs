@@ -33,8 +33,10 @@ namespace SendaVR
         public float retrasoAlVolver = 0.15f;
 
         [Header("Después de iniciar sesión")]
-        [Tooltip("Nombre de la escena del Hub o del sendero. Debe estar en File > Build Profiles / Build Settings.")]
+        [Tooltip("Nombre de la escena del cuarto (Hub). Debe estar en File > Build Profiles > Scene List.")]
         public string escenaSiguiente = "";
+        [Tooltip("Pantalla de carga y bienvenida (video). Si está vacía, se carga la escena directo.")]
+        public PantallaCarga pantallaCarga;
 
         bool yaSeMostro;
         Vector2 posPanel;
@@ -111,10 +113,16 @@ namespace SendaVR
             Entrar("¡Bienvenido a Senda.vr!");
         }
 
-        void Entrar(string texto)
+        /// <summary>Entra a la experiencia: pantalla de carga/bienvenida y luego el cuarto.</summary>
+        public void Entrar(string texto)
         {
             MostrarMensaje(texto, false);
-            if (!string.IsNullOrEmpty(escenaSiguiente))
+            if (pantallaCarga != null)
+            {
+                pantallaCarga.escenaSiguiente = escenaSiguiente;
+                IrA(pantallaCarga);
+            }
+            else if (!string.IsNullOrEmpty(escenaSiguiente))
                 SceneManager.LoadScene(escenaSiguiente);
             else
             {

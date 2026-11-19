@@ -43,6 +43,13 @@ namespace SendaVR
             }
         }
 
+        /// <summary>Detiene los videos del menú (los usa la pantalla de carga).</summary>
+        public void Detener()
+        {
+            if (intro != null) { intro.loopPointReached -= AlTerminarIntro; intro.Stop(); }
+            if (bucle != null) bucle.Stop();
+        }
+
         void AlTerminarIntro(VideoPlayer vp)
         {
             intro.loopPointReached -= AlTerminarIntro;

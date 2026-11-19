@@ -75,13 +75,13 @@ namespace SendaVR
             {
                 if (campoContrasena.text.Length < 6) { Error("La contraseña debe tener al menos 6 caracteres."); return; }
                 if (campoContrasena.text != campoRepetir.text) { Error("Las contraseñas no coinciden."); return; }
+                campoContrasena.text = campoRepetir.text = "";
                 if (login != null)
                 {
+                    // Cuenta creada: entra directo a la bienvenida (igual que al iniciar sesión)
                     if (paso1 != null) login.PrecargarCorreo(paso1.campoCorreo.text.Trim());
-                    login.MostrarMensaje("¡Cuenta creada! Ya puedes iniciar sesión.", false);
+                    login.Entrar("¡Cuenta creada!");
                 }
-                campoContrasena.text = campoRepetir.text = "";
-                IrA(login);
             }
         }
 

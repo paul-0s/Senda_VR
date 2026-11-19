@@ -30,6 +30,11 @@ namespace SendaVR.EditorTools
         [MenuItem("Senda.vr/1. Preparar imágenes (ejecutar primero)", priority = 1)]
         public static void PrepararImagenes()
         {
+            if (EditorApplication.isPlayingOrWillChangePlaymode)
+            {
+                EditorUtility.DisplayDialog("Senda.vr", "Detén el Play ▶ antes de preparar las imágenes.", "OK");
+                return;
+            }
             ConfigurarImportadores();
             EditorUtility.DisplayDialog("Senda.vr",
                 "Imágenes listas.\n\nAhora usa:\nSenda.vr > 2. Construir menú (pantalla de PC)\no\nSenda.vr > 3. Construir menú (VR)", "OK");
@@ -45,6 +50,15 @@ namespace SendaVR.EditorTools
 
         static void Construir(bool modoVR)
         {
+            if (EditorApplication.isPlayingOrWillChangePlaymode)
+            {
+                EditorUtility.DisplayDialog("Senda.vr",
+                    "El menú no se puede construir mientras Unity está en Play.\n\n" +
+                    "1. Presiona Play ▶ otra vez para detenerlo.\n" +
+                    "2. Vuelve a ejecutar Senda.vr > Construir menú.\n" +
+                    "3. Guarda la escena (Ctrl + S) y después dale Play.", "OK");
+                return;
+            }
             ConfigurarImportadores();
             fuente = BuscarFuente();
 
@@ -115,22 +129,25 @@ namespace SendaVR.EditorTools
             var login = CrearLogin(contenedor, texturaVideo);
             var paso1 = CrearCuentaPaso1(contenedor, texturaVideo);
             var paso2 = CrearCuentaPaso2(contenedor, texturaVideo);
+            var carga = CrearCarga(contenedor);
 
             // Conexiones entre pantallas
             splash.siguiente = terminos;
             terminos.siguiente = login;
             login.pantallaCrearCuenta = paso1;
             login.videoFondo = controlVideo;
+            login.pantallaCarga = carga;
+            carga.videoFondo = controlVideo;
             paso1.pantallaAnterior = login; paso1.pantallaSiguiente = paso2; paso1.login = login;
             paso2.pantallaAnterior = paso1; paso2.login = login; paso2.paso1 = paso1;
 
             // En el editor solo se deja visible el splash (las demás se activan al dar Play)
-            foreach (var otra in new PantallaBase[] { terminos, login, paso1, paso2 })
+            foreach (var otra in new PantallaBase[] { terminos, login, paso1, paso2, carga })
                 otra.gameObject.SetActive(false);
 
             var nav = canvasGO.AddComponent<NavegadorPantallas>();
             nav.pantallaInicial = splash;
-            nav.pantallas = new PantallaBase[] { splash, terminos, login, paso1, paso2 };
+            nav.pantallas = new PantallaBase[] { splash, terminos, login, paso1, paso2, carga };
 
             Undo.RegisterCreatedObjectUndo(canvasGO, "Construir menú Senda.vr");
             Selection.activeGameObject = canvasGO;
@@ -392,6 +409,45 @@ namespace SendaVR.EditorTools
 
             p.botonContinuar = Boton("Boton Crear cuenta", panel, 226, 512, 797, 74, "Crear Cuenta", SendaEstilo.Naranja, SendaEstilo.NaranjaIntenso, SendaEstilo.TamBoton);
             p.botonCancelar = Boton("Boton Cancelar", panel, 226, 609, 797, 74, "Cancelar", SendaEstilo.Azul, SendaEstilo.Azul * 1.12f, SendaEstilo.TamBoton);
+            return p;
+        }
+
+        // ------------------------------------------------- carga y bienvenida
+
+        static PantallaCarga CrearCarga(RectTransform padre)
+        {
+            var p = Pantalla<PantallaCarga>("06 Carga y bienvenida", padre);
+            var rt = p.GetComponent<RectTransform>();
+
+            var negro = Img("Fondo negro", rt, null, Color.black);
+            Estirar(negro.rectTransform);
+
+            var clip = BuscarVideo("bienvenida");
+            if (clip != null)
+            {
+                string rutaRT = CarpetaVideo + "/BienvenidaVideo_RT.renderTexture";
+                var rtex = AssetDatabase.LoadAssetAtPath<RenderTexture>(rutaRT);
+                if (rtex == null)
+                {
+                    rtex = new RenderTexture((int)clip.width, (int)clip.height, 0) { name = "BienvenidaVideo_RT" };
+                    AssetDatabase.CreateAsset(rtex, rutaRT);
+                }
+                var raw = Nuevo("Video bienvenida", rt).gameObject.AddComponent<RawImage>();
+                raw.texture = rtex;
+                raw.raycastTarget = false;
+                Estirar(raw.rectTransform);
+                var ajuste = raw.gameObject.AddComponent<AspectRatioFitter>();
+                ajuste.aspectMode = AspectRatioFitter.AspectMode.EnvelopeParent;
+                ajuste.aspectRatio = clip.height > 0 ? (float)clip.width / clip.height : 16f / 9f;
+                p.video = CrearReproductor(raw.rectTransform, "Reproductor", clip, rtex, false);
+                p.imagen = raw;
+            }
+            else
+            {
+                var aviso = Txt("Aviso", rt, "Cargando...", 40, SendaEstilo.Blanco, true, TextAlignmentOptions.Center);
+                Estirar(aviso.rectTransform);
+            }
+            p.duracionFundido = 0.6f;
             return p;
         }
 
@@ -693,6 +749,15 @@ namespace SendaVR.EditorTools
         // ============================================================ recursos
 
         static bool EsVideoLogo(VideoClip c) => c.name == "logo_animacion";
+        static bool EsVideoEspecial(VideoClip c) => c.name == "logo_animacion" || c.name == "bienvenida";
+
+        static VideoClip BuscarVideo(string nombre)
+        {
+            if (!AssetDatabase.IsValidFolder(CarpetaVideo)) return null;
+            return AssetDatabase.FindAssets("t:VideoClip", new[] { CarpetaVideo })
+                .Select(g => AssetDatabase.LoadAssetAtPath<VideoClip>(AssetDatabase.GUIDToAssetPath(g)))
+                .FirstOrDefault(c => c != null && c.name == nombre);
+        }
 
         static VideoClip BuscarVideoLogo()
         {
@@ -717,7 +782,7 @@ namespace SendaVR.EditorTools
                 .Where(c => c != null).ToList();
             if (clips.Count == 0) return null;
 
-            clips = clips.Where(c => !EsVideoLogo(c)).ToList();
+            clips = clips.Where(c => !EsVideoEspecial(c)).ToList();
             if (clips.Count == 0) return null;
             VideoClip intro = clips.FirstOrDefault(c => c.name == "menu_entrada" || c.name == "fondo_login_intro");
             VideoClip bucle = clips.FirstOrDefault(c => c.name == "menu_bucle" || c.name == "fondo_login")
@@ -771,6 +836,7 @@ namespace SendaVR.EditorTools
             if (!hayVideo && Spr("fondo_login") == null) r += "• Videos del logo y del menú (.mp4)\n";
             if (Spr("fondo_crear_cuenta") == null) r += "• Fondo de crear cuenta (fondo_crear_cuenta.jpg)\n";
             if (Spr("logo_google") == null) r += "• Logos Oculus / Google / Apple\n";
+            if (BuscarVideo("bienvenida") == null) r += "• Video de carga (bienvenida.mp4)\n";
             return r;
         }
 
