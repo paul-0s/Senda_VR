@@ -12,17 +12,31 @@ namespace SendaVR
         public static readonly Color Naranja         = Hex("F17E07"); // Iniciar sesión / Crear cuenta
         public static readonly Color NaranjaIntenso  = Hex("E65E09"); // hover de Salir / Aceptar
         public static readonly Color Azul            = Hex("4D76DD"); // Crear cuenta / Cancelar
-        public static readonly Color Gris            = Hex("838181"); // botón deshabilitado / Salir
+        public static readonly Color Gris            = Hex("838181"); // botón deshabilitado / Salir / puntos inactivos
+        public static readonly Color GrisClaro       = Hex("D9D9D9"); // punto activo / casilla marcada
         public static readonly Color NaranjaLogo     = Hex("FF8345");
 
+        // Interruptor "Recuérdame"
+        public static readonly Color CremaInterruptor = Hex("EEDCCF");
+        public static readonly Color NaranjaPerilla   = Hex("FF6803");
+
         // Paneles y texto
-        public static readonly Color Panel           = new Color(0.12f, 0.12f, 0.12f, 0.92f);
-        public static readonly Color Oscurecer       = new Color(0f, 0f, 0f, 0.25f);
+        public static readonly Color Panel           = new Color(32f / 255f, 32f / 255f, 32f / 255f, 0.92f); // #202020 al 92 %
+        public static readonly Color Velo            = new Color(20f / 255f, 24f / 255f, 29f / 255f, 0.58f); // Rectangle 234/235
+        public static readonly Color VeloInferior    = new Color(20f / 255f, 24f / 255f, 29f / 255f, 0.48f); // segunda capa en crear cuenta
+        public static readonly Color Oscurecer       = Velo; // nombre antiguo, se mantiene por compatibilidad
         public static readonly Color Blanco          = Color.white;
-        public static readonly Color TextoSuave      = new Color(1f, 1f, 1f, 0.55f);
-        public static readonly Color BordeCampo      = new Color(1f, 1f, 1f, 0.75f);
+        public static readonly Color TextoSuave      = new Color(1f, 1f, 1f, 0.59f);
+        public static readonly Color TextoEtiqueta   = new Color(204f / 255f, 204f / 255f, 204f / 255f, 0.77f); // "Recuérdame:"
+        public static readonly Color BordeCampo      = Color.white;
         public static readonly Color TextoOscuro     = Hex("2B2B2B");
         public static readonly Color Error           = Hex("FF8A65");
+
+        // Tamaños de texto (px de Figma)
+        public const float TamTitulo = 48f;
+        public const float TamSubtitulo = 24f;
+        public const float TamCampo = 24f;
+        public const float TamBoton = 32f;
 
         public static Color Hex(string hex)
         {

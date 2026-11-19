@@ -7,8 +7,8 @@ namespace SendaVR
 {
     /// <summary>
     /// Términos y condiciones paginados (variantes 1 a 6 del componente
-    /// "terminos y condiciones"). El botón de aceptar se activa solo en la
-    /// última página y con la casilla marcada.
+    /// "terminos y condiciones"). En la última página aparece la casilla y,
+    /// al marcarla, el panel crece y aparecen los botones Salir y Aceptar.
     /// </summary>
     public class PantallaTerminos : PantallaBase
     {
@@ -26,11 +26,19 @@ namespace SendaVR
         public RectTransform panel;
         public PantallaBase siguiente;
 
-        public Color colorPuntoActivo = Color.white;
-        public Color colorPuntoInactivo = new Color(1f, 1f, 1f, 0.3f);
+        [Header("Botones Salir / Aceptar (aparecen al marcar la casilla)")]
+        public CanvasGroup grupoBotones;
+
+        [Header("Alto del panel (px de Figma)")]
+        public float altoPaginas = 730f;
+        public float altoUltimaPagina = 760f;
+        public float altoAceptado = 815f;
+
+        public Color colorPuntoActivo = SendaEstilo.GrisClaro;
+        public Color colorPuntoInactivo = SendaEstilo.Gris;
 
         int pagina;
-        Coroutine cambio;
+        Coroutine cambio, alto, botones;
 
         protected override void Awake()
         {
@@ -54,6 +62,8 @@ namespace SendaVR
             casilla.isOn = false;
             textoSeccion.text = secciones[0];
             grupoTexto.alpha = 1f;
+            if (grupoBotones != null) { grupoBotones.alpha = 0f; grupoBotones.blocksRaycasts = false; }
+            panel.sizeDelta = new Vector2(panel.sizeDelta.x, altoPaginas);
             Refrescar();
             StartCoroutine(EntradaPanel());
         }
@@ -86,6 +96,7 @@ namespace SendaVR
         void Refrescar()
         {
             bool ultima = pagina == secciones.Length - 1;
+            bool aceptado = ultima && casilla.isOn;
             for (int i = 0; i < puntos.Length; i++)
             {
                 puntos[i].gameObject.SetActive(i < secciones.Length);
@@ -94,7 +105,31 @@ namespace SendaVR
             botonAnterior.interactable = pagina > 0;
             botonSiguiente.interactable = !ultima;
             filaCasilla.SetActive(ultima);
-            botonAceptar.interactable = ultima && casilla.isOn;
+            botonAceptar.interactable = aceptado;
+
+            if (!isActiveAndEnabled) return;
+            float objetivo = aceptado ? altoAceptado : (ultima ? altoUltimaPagina : altoPaginas);
+            if (alto != null) StopCoroutine(alto);
+            alto = StartCoroutine(AnimarAlto(objetivo));
+            if (grupoBotones != null)
+            {
+                if (botones != null) StopCoroutine(botones);
+                botones = StartCoroutine(AnimarBotones(aceptado));
+            }
+        }
+
+        IEnumerator AnimarAlto(float objetivo)
+        {
+            float desde = panel.sizeDelta.y;
+            yield return Animar(0.35f, t => panel.sizeDelta = new Vector2(panel.sizeDelta.x, Mathf.Lerp(desde, objetivo, t)), SendaEstilo.EaseOutCubic);
+        }
+
+        IEnumerator AnimarBotones(bool mostrar)
+        {
+            grupoBotones.blocksRaycasts = mostrar;
+            float desde = grupoBotones.alpha;
+            if (mostrar) yield return new WaitForSecondsRealtime(0.15f);
+            yield return Animar(0.3f, t => grupoBotones.alpha = Mathf.Lerp(desde, mostrar ? 1f : 0f, t), SendaEstilo.EaseOutCubic);
         }
 
         void Salir()

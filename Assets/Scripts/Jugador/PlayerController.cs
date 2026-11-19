@@ -143,6 +143,18 @@ public class PlayerController : MonoBehaviour
 
     void Update()
     {
+        // Mientras el menú de Senda.vr (login, términos...) esté abierto, el jugador
+        // no se mueve ni captura el mouse, para poder hacer clic en los botones.
+        if (SendaVR.NavegadorPantallas.MenuAbierto)
+        {
+            if (Cursor.lockState != CursorLockMode.None || !Cursor.visible)
+            {
+                Cursor.lockState = CursorLockMode.None;
+                Cursor.visible = true;
+            }
+            return;
+        }
+
         if (vrActive)
         {
             SnapTurn();

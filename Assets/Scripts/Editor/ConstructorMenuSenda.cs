@@ -215,43 +215,51 @@ namespace SendaVR.EditorTools
             anim.variantes = new[] { Spr("fondo_gradiente_1"), Spr("fondo_gradiente_2"), Spr("fondo_gradiente_3") }
                 .Where(s => s != null).ToArray();
 
-            // Panel
-            var panel = Panel("Panel terminos", rt, 336, 100, 1248, 720);
-            var titulo = Txt("Titulo", panel, TextosSenda.TituloTerminos, 28, SendaEstilo.Blanco, true, TextAlignmentOptions.Left);
-            Figma(titulo.rectTransform, 60, 50, 1128, 40);
-            var intro = Txt("Introduccion", panel, TextosSenda.IntroTerminos, 21, SendaEstilo.Blanco, true, TextAlignmentOptions.TopLeft);
-            Figma(intro.rectTransform, 60, 105, 1128, 70);
+            // Panel (componente "terminos y condiciones": 1248 de ancho, esquina superior en y = 181)
+            var panel = Panel("Panel terminos", rt, 336, 181, 1248, 730);
+            var titulo = Txt("Titulo", panel, TextosSenda.TituloTerminos, 32, SendaEstilo.Blanco, true, TextAlignmentOptions.TopLeft);
+            Figma(titulo.rectTransform, 79, 60, 1090, 46);
+            var intro = Txt("Introduccion", panel, TextosSenda.IntroTerminos, 20, SendaEstilo.Blanco, true, TextAlignmentOptions.TopJustified);
+            Figma(intro.rectTransform, 79, 126, 1090, 58);
 
             var zonaTexto = Nuevo("Seccion", panel);
-            Figma(zonaTexto, 60, 200, 1128, 330);
+            Figma(zonaTexto, 79, 206, 1090, 312);
             var grupoTexto = zonaTexto.gameObject.AddComponent<CanvasGroup>();
-            var seccion = Txt("Texto seccion", zonaTexto, TextosSenda.SeccionesTerminos[0], 23, new Color(1, 1, 1, 0.9f), false, TextAlignmentOptions.TopLeft);
-            seccion.lineSpacing = 12;
+            var seccion = Txt("Texto seccion", zonaTexto, TextosSenda.SeccionesTerminos[0], 20, SendaEstilo.Blanco, false, TextAlignmentOptions.TopJustified);
+            seccion.enableAutoSizing = true; seccion.fontSizeMin = 16; seccion.fontSizeMax = 20;
             Estirar(seccion.rectTransform);
 
-            // Paginación
+            // Paginación: flechas circulares + puntos (centrados en el panel)
             int n = TextosSenda.SeccionesTerminos.Length;
             var puntos = new Image[n];
-            float anchoPuntos = (n - 1) * 32f;
+            const float tamPunto = 18f, pasoPunto = 31f, tamFlecha = 38f;
+            float anchoPuntos = (n - 1) * pasoPunto + tamPunto;
+            float inicioPuntos = 624f - anchoPuntos / 2f;
             for (int i = 0; i < n; i++)
             {
-                var d = Img("Punto " + (i + 1), panel, Spr("circulo"), Color.white);
-                Figma(d.rectTransform, 624 - anchoPuntos / 2f + i * 32f - 8f, 552, 16, 16);
+                var d = Img("Punto " + (i + 1), panel, Spr("circulo"), SendaEstilo.Gris);
+                Figma(d.rectTransform, inicioPuntos + i * pasoPunto, 540, tamPunto, tamPunto);
                 var b = d.gameObject.AddComponent<Button>();
                 b.transition = Selectable.Transition.None;
                 puntos[i] = d;
             }
-            var anterior = BotonIcono("Anterior", panel, Spr("icono_volver"), 624 - anchoPuntos / 2f - 80f, 540, 40, false);
-            var siguiente = BotonIcono("Siguiente", panel, Spr("icono_volver"), 624 + anchoPuntos / 2f + 40f, 540, 40, true);
+            var flecha = Spr("flecha_circulo") ?? Spr("icono_volver");
+            var anterior = BotonFlecha("Anterior", panel, flecha, inicioPuntos - 25.5f - tamFlecha, 530, tamFlecha, false);
+            var siguiente = BotonFlecha("Siguiente", panel, flecha, inicioPuntos + anchoPuntos + 25.5f, 530, tamFlecha, true);
 
-            // Casilla de aceptación (última página)
+            // Casilla de aceptación (solo en la última página)
             var fila = Nuevo("Casilla aceptar", panel);
-            Figma(fila, 60, 618, 1128, 50);
+            Figma(fila, 248, 595, 760, 40);
             var casilla = Casilla(fila, TextosSenda.TextoCasilla);
 
-            // Botones bajo el panel (componentes BOTON SALIR / BOTON CONDICIONES)
-            var salir = Boton("Boton Salir", rt, 336, 860, 300, 75, "Salir", SendaEstilo.Gris, SendaEstilo.NaranjaIntenso, 28);
-            var aceptar = Boton("Boton Aceptar terminos", rt, 1033, 860, 551, 75, "ACEPTO LOS TÉRMINOS Y CONDICIONES", SendaEstilo.NaranjaIntenso, SendaEstilo.Naranja, 24);
+            // Botones Salir / Aceptar (dentro del panel, aparecen al marcar la casilla)
+            var zonaBotones = Nuevo("Botones Salir y Aceptar", panel);
+            Estirar(zonaBotones);
+            var grupoBotones = zonaBotones.gameObject.AddComponent<CanvasGroup>();
+            grupoBotones.alpha = 0f;
+            grupoBotones.blocksRaycasts = false;
+            var salir = Boton("Boton Salir", zonaBotones, 344, 680, 252, 63, "Salir", SendaEstilo.Gris, SendaEstilo.NaranjaIntenso, 23);
+            var aceptar = Boton("Boton Aceptar terminos", zonaBotones, 652, 680, 252, 63, "Aceptar", SendaEstilo.Gris, SendaEstilo.NaranjaIntenso, 23);
             aceptar.GetComponent<BotonAnimado>().colorDeshabilitado = SendaEstilo.Gris;
 
             p.secciones = (string[])TextosSenda.SeccionesTerminos.Clone();
@@ -265,6 +273,7 @@ namespace SendaVR.EditorTools
             p.botonAceptar = aceptar;
             p.botonSalir = salir;
             p.panel = panel;
+            p.grupoBotones = grupoBotones;
             return p;
         }
 
@@ -276,7 +285,7 @@ namespace SendaVR.EditorTools
             var rt = p.GetComponent<RectTransform>();
 
             FondoFoto(rt, video, null, "fondo_login", "fondo_login_provisorio");
-            var osc = Img("Oscurecer", rt, null, SendaEstilo.Oscurecer);
+            var osc = Img("Velo", rt, null, SendaEstilo.Velo);
             Estirar(osc.rectTransform);
             osc.raycastTarget = false;
             var oscGrupo = osc.gameObject.AddComponent<CanvasGroup>();
@@ -289,8 +298,8 @@ namespace SendaVR.EditorTools
             var correo = Campo("Campo correo", panel, 225, 179, 806, 74, Spr("icono_correo"), "Correo electrónico", TMP_InputField.ContentType.EmailAddress);
             var clave = Campo("Campo contrasena", panel, 225, 282, 806, 74, Spr("icono_candado"), "Contraseña", TMP_InputField.ContentType.Password);
 
-            var iniciar = Boton("Boton Iniciar sesion", panel, 232, 412, 384, 74, "Iniciar sesión", SendaEstilo.Naranja, SendaEstilo.NaranjaIntenso, 26);
-            var crear = Boton("Boton Crear cuenta", panel, 647, 412, 384, 74, "Crear cuenta", SendaEstilo.Azul, SendaEstilo.Azul * 1.12f, 26);
+            var iniciar = Boton("Boton Iniciar sesion", panel, 232, 412, 384, 74, "Iniciar sesión", SendaEstilo.Naranja, SendaEstilo.NaranjaIntenso, SendaEstilo.TamBoton);
+            var crear = Boton("Boton Crear cuenta", panel, 647, 412, 384, 74, "Crear cuenta", SendaEstilo.Azul, SendaEstilo.Azul * 1.12f, SendaEstilo.TamBoton);
 
             var mensaje = Txt("Mensaje", panel, "", 21, SendaEstilo.Blanco, false, TextAlignmentOptions.Center);
             Figma(mensaje.rectTransform, 0, 496, 1248, 40);
@@ -301,9 +310,9 @@ namespace SendaVR.EditorTools
 
             var sociales = new[]
             {
-                BotonSocial("Boton Oculus", panel, "logo_oculus", "oculus", 311, 597, 213, 46),
-                BotonSocial("Boton Google", panel, "logo_google", "G", 629, 585, 70, 70),
-                BotonSocial("Boton Apple", panel, "logo_apple", "Apple", 830, 579, 57, 68),
+                BotonSocial("Boton Google", panel, "logo_google", "G", 337, 585, 70, 70),
+                BotonSocial("Boton Oculus", panel, "logo_oculus", "oculus", 518, 597, 213, 46),
+                BotonSocial("Boton Apple", panel, "logo_apple", "Apple", 842, 579, 57, 68),
             };
 
             p.panel = panel;
@@ -325,15 +334,21 @@ namespace SendaVR.EditorTools
             var p = Pantalla<PantallaCrearCuenta>(nombre, padre);
             var rt = p.GetComponent<RectTransform>();
             FondoFoto(rt, video, "fondo_crear_cuenta", "fondo_login", "fondo_login_provisorio");
-            var osc = Img("Oscurecer", rt, null, SendaEstilo.Oscurecer);
+            var osc = Img("Velo", rt, null, SendaEstilo.Velo);
             Estirar(osc.rectTransform);
             osc.raycastTarget = false;
+            // Segunda capa (Rectangle 234): más oscura hacia abajo
+            var oscAbajo = Img("Velo inferior", rt, Spr("velo_degradado"), SendaEstilo.VeloInferior);
+            Estirar(oscAbajo.rectTransform, 0, 0, 0, 250);
+            oscAbajo.raycastTarget = false;
 
             panel = Panel("Panel crear cuenta", rt, 336, 159, 1248, 763);
             TituloCentrado(panel, "¡Rellena tus datos!", "Completa los datos para crear tu cuenta", 83, 142);
 
-            var volver = BotonIcono("Boton volver", panel, Spr("icono_volver"), 33, 52, 46, false);
-            volver.GetComponent<Image>().color = new Color(0.86f, 0.86f, 0.86f);
+            var volver = BotonFlecha("Boton volver", panel, Spr("flecha_circulo") ?? Spr("icono_volver"), 35, 53, 46, false);
+            var coloresVolver = volver.colors;
+            coloresVolver.normalColor = SendaEstilo.GrisClaro;
+            volver.colors = coloresVolver;
 
             p.panel = panel;
             p.botonVolver = volver;
@@ -353,8 +368,8 @@ namespace SendaVR.EditorTools
             p.mensaje = Txt("Mensaje", panel, "", 20, SendaEstilo.Error, false, TextAlignmentOptions.Center);
             Figma(p.mensaje.rectTransform, 0, 579, 1248, 38);
 
-            p.botonCancelar = Boton("Boton Cancelar", panel, 228, 622, 384, 74, "Cancelar", SendaEstilo.Azul, SendaEstilo.Azul * 1.12f, 26);
-            p.botonContinuar = Boton("Boton Crear cuenta", panel, 643, 622, 384, 74, "Crear cuenta", SendaEstilo.Naranja, SendaEstilo.NaranjaIntenso, 26);
+            p.botonCancelar = Boton("Boton Cancelar", panel, 228, 622, 384, 74, "Cancelar", SendaEstilo.Azul, SendaEstilo.Azul * 1.12f, SendaEstilo.TamBoton);
+            p.botonContinuar = Boton("Boton Crear cuenta", panel, 643, 622, 384, 74, "Crear cuenta", SendaEstilo.Naranja, SendaEstilo.NaranjaIntenso, SendaEstilo.TamBoton);
             return p;
         }
 
@@ -368,15 +383,15 @@ namespace SendaVR.EditorTools
             BotonOjo(p.campoContrasena);
             BotonOjo(p.campoRepetir);
 
-            var lbl = Txt("Recuerdame", panel, "Recuérdame:", 22, SendaEstilo.TextoSuave, false, TextAlignmentOptions.Left);
+            var lbl = Txt("Recuerdame", panel, "Recuérdame:", 24, SendaEstilo.TextoEtiqueta, false, TextAlignmentOptions.Left);
             Figma(lbl.rectTransform, 221, 404, 300, 33);
-            p.recuerdame = Interruptor(panel, 957, 407, 59, 27, true);
+            p.recuerdame = Interruptor(panel, 957, 407, 59, 27, false);
 
             p.mensaje = Txt("Mensaje", panel, "", 20, SendaEstilo.Error, false, TextAlignmentOptions.Center);
             Figma(p.mensaje.rectTransform, 0, 456, 1248, 40);
 
-            p.botonContinuar = Boton("Boton Crear cuenta", panel, 226, 512, 797, 74, "Crear Cuenta", SendaEstilo.Naranja, SendaEstilo.NaranjaIntenso, 26);
-            p.botonCancelar = Boton("Boton Cancelar", panel, 226, 609, 797, 74, "Cancelar", SendaEstilo.Azul, SendaEstilo.Azul * 1.12f, 26);
+            p.botonContinuar = Boton("Boton Crear cuenta", panel, 226, 512, 797, 74, "Crear Cuenta", SendaEstilo.Naranja, SendaEstilo.NaranjaIntenso, SendaEstilo.TamBoton);
+            p.botonCancelar = Boton("Boton Cancelar", panel, 226, 609, 797, 74, "Cancelar", SendaEstilo.Azul, SendaEstilo.Azul * 1.12f, SendaEstilo.TamBoton);
             return p;
         }
 
@@ -454,9 +469,9 @@ namespace SendaVR.EditorTools
 
         static void TituloCentrado(RectTransform panel, string titulo, string subtitulo, float yTitulo, float ySub)
         {
-            var t = Txt("Titulo", panel, titulo, 46, SendaEstilo.Blanco, true, TextAlignmentOptions.Center);
-            Figma(t.rectTransform, 0, yTitulo - 32, panel.sizeDelta.x, 64);
-            var s = Txt("Subtitulo", panel, subtitulo, 22, SendaEstilo.Blanco, false, TextAlignmentOptions.Center);
+            var t = Txt("Titulo", panel, titulo, SendaEstilo.TamTitulo, SendaEstilo.Blanco, true, TextAlignmentOptions.Center);
+            Figma(t.rectTransform, 0, yTitulo - 34, panel.sizeDelta.x, 68);
+            var s = Txt("Subtitulo", panel, subtitulo, SendaEstilo.TamSubtitulo, SendaEstilo.Blanco, false, TextAlignmentOptions.Center);
             Figma(s.rectTransform, 0, ySub - 18, panel.sizeDelta.x, 36);
         }
 
@@ -494,6 +509,29 @@ namespace SendaVR.EditorTools
             var colores = b.colors;
             colores.disabledColor = new Color(1, 1, 1, 0.25f);
             colores.highlightedColor = new Color(1f, 0.85f, 0.7f);
+            b.colors = colores;
+            return b;
+        }
+
+        /// <summary>Botón circular con flecha (Group 67 de Figma). El sprite apunta a la izquierda.</summary>
+        static Button BotonFlecha(string nombre, RectTransform padre, Sprite sprite, float x, float y, float tam, bool haciaDerecha)
+        {
+            var img = Img(nombre, padre, sprite, Color.white);
+            img.preserveAspect = true;
+            img.rectTransform.anchorMin = img.rectTransform.anchorMax = new Vector2(0, 1);
+            img.rectTransform.pivot = new Vector2(0.5f, 0.5f);
+            img.rectTransform.anchoredPosition = new Vector2(x + tam / 2f, -y - tam / 2f);
+            img.rectTransform.sizeDelta = new Vector2(tam, tam);
+            if (haciaDerecha) img.rectTransform.localScale = new Vector3(-1, 1, 1);
+            var b = img.gameObject.AddComponent<Button>();
+            b.targetGraphic = img;
+            var colores = b.colors;
+            colores.normalColor = Color.white;
+            colores.highlightedColor = new Color(1f, 0.85f, 0.7f);
+            colores.pressedColor = new Color(1f, 0.7f, 0.45f);
+            colores.selectedColor = Color.white;
+            colores.disabledColor = SendaEstilo.Gris;
+            colores.fadeDuration = 0.12f;
             b.colors = colores;
             return b;
         }
@@ -590,16 +628,16 @@ namespace SendaVR.EditorTools
         {
             var toggle = fila.gameObject.AddComponent<Toggle>();
             var caja = Img("Caja", fila, Spr("casilla_borde"), Color.white);
-            Figma(caja.rectTransform, 0, 7, 36, 36);
-            var marca = Img("Marcada", caja.rectTransform, Spr("casilla_relleno"), SendaEstilo.Naranja);
+            Figma(caja.rectTransform, 0, 5, 30, 30);
+            var marca = Img("Marcada", caja.rectTransform, Spr("casilla_relleno"), SendaEstilo.GrisClaro);
             Estirar(marca.rectTransform);
             marca.raycastTarget = false;
-            var check = Img("Check", marca.rectTransform, Spr("icono_check"), Color.white);
+            var check = Img("Check", marca.rectTransform, Spr("icono_check"), SendaEstilo.TextoOscuro);
             Estirar(check.rectTransform, 5, 5, 5, 5);
             check.raycastTarget = false;
             var t = Txt("Texto", fila, texto, 21, SendaEstilo.Blanco, false, TextAlignmentOptions.MidlineLeft);
             t.raycastTarget = true; // para poder hacer click en el texto
-            Figma(t.rectTransform, 52, 0, 1060, 50);
+            Figma(t.rectTransform, 46, 0, 720, 40);
 
             toggle.targetGraphic = caja;
             toggle.isOn = false;
@@ -611,9 +649,9 @@ namespace SendaVR.EditorTools
 
         static Toggle Interruptor(RectTransform padre, float x, float y, float w, float h, bool encendido)
         {
-            var fondo = Img("Interruptor Recuerdame", padre, Spr("pildora"), SendaEstilo.Naranja);
+            var fondo = Img("Interruptor Recuerdame", padre, Spr("pildora"), encendido ? SendaEstilo.Naranja : SendaEstilo.CremaInterruptor);
             Figma(fondo.rectTransform, x, y, w, h);
-            var perilla = Img("Perilla", fondo.rectTransform, Spr("circulo"), Color.white);
+            var perilla = Img("Perilla", fondo.rectTransform, Spr("circulo"), encendido ? Color.white : SendaEstilo.NaranjaPerilla);
             Centro(perilla.rectTransform, encendido ? 16 : -16, 0, h - 6, h - 6);
             perilla.raycastTarget = false;
             var toggle = fondo.gameObject.AddComponent<Toggle>();
@@ -623,7 +661,11 @@ namespace SendaVR.EditorTools
             vis.fondo = fondo;
             vis.perilla = perilla.rectTransform;
             vis.recorrido = w - h;
+            vis.colorApagado = SendaEstilo.CremaInterruptor;     // como en Figma (Component 2)
             vis.colorEncendido = SendaEstilo.Naranja;
+            vis.perillaImagen = perilla;
+            vis.perillaApagada = SendaEstilo.NaranjaPerilla;
+            vis.perillaEncendida = Color.white;
             return toggle;
         }
 

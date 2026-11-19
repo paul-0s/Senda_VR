@@ -20,6 +20,11 @@ namespace SendaVR
         public Color colorEncendido = new Color(0.945f, 0.494f, 0.027f, 1f);
         public float recorrido = 32f;
 
+        [Header("Color de la perilla (opcional)")]
+        public Image perillaImagen;
+        public Color perillaApagada = Color.white;
+        public Color perillaEncendida = Color.white;
+
         Toggle toggle;
 
         void Awake()
@@ -38,12 +43,15 @@ namespace SendaVR
         void Update()
         {
             if (perilla == null) return;
+            float k = 1f - Mathf.Exp(-14f * Time.unscaledDeltaTime);
             float objetivo = toggle.isOn ? recorrido / 2f : -recorrido / 2f;
             var p = perilla.anchoredPosition;
-            p.x = Mathf.Lerp(p.x, objetivo, 1f - Mathf.Exp(-14f * Time.unscaledDeltaTime));
+            p.x = Mathf.Lerp(p.x, objetivo, k);
             perilla.anchoredPosition = p;
             if (fondo != null)
-                fondo.color = Color.Lerp(fondo.color, toggle.isOn ? colorEncendido : colorApagado, 1f - Mathf.Exp(-14f * Time.unscaledDeltaTime));
+                fondo.color = Color.Lerp(fondo.color, toggle.isOn ? colorEncendido : colorApagado, k);
+            if (perillaImagen != null)
+                perillaImagen.color = Color.Lerp(perillaImagen.color, toggle.isOn ? perillaEncendida : perillaApagada, k);
         }
 
         void Refrescar(bool instantaneo)
@@ -55,6 +63,7 @@ namespace SendaVR
                 p.x = toggle.isOn ? recorrido / 2f : -recorrido / 2f;
                 perilla.anchoredPosition = p;
                 if (fondo != null) fondo.color = toggle.isOn ? colorEncendido : colorApagado;
+                if (perillaImagen != null) perillaImagen.color = toggle.isOn ? perillaEncendida : perillaApagada;
             }
         }
     }

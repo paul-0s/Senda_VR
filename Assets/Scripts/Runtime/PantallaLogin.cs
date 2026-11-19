@@ -117,7 +117,11 @@ namespace SendaVR
             if (!string.IsNullOrEmpty(escenaSiguiente))
                 SceneManager.LoadScene(escenaSiguiente);
             else
-                Debug.Log("[Senda.vr] Sesión iniciada. Escribe el nombre de la escena del Hub en 'Escena Siguiente' de PantallaLogin.");
+            {
+                // Sin escena siguiente: se cierra el menú y el Jugador de esta escena toma el control.
+                Debug.Log("[Senda.vr] Sesión iniciada. Para cargar otra escena, escribe su nombre en 'Escena Siguiente' de PantallaLogin.");
+                if (navegador != null) navegador.CerrarMenu();
+            }
         }
 
         IEnumerator Sacudir()
