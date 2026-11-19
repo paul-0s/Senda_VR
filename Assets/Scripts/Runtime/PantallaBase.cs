@@ -66,6 +66,26 @@ namespace SendaVR
             if (navegador != null && destino != null) navegador.IrA(destino);
         }
 
+        /// <summary>
+        /// Borra una RenderTexture de video. Así no se ve por un instante el último
+        /// cuadro que quedó guardado de la prueba anterior.
+        /// </summary>
+        public static void LimpiarTextura(RenderTexture rt, Color color)
+        {
+            if (rt == null) return;
+            var anterior = RenderTexture.active;
+            RenderTexture.active = rt;
+            GL.Clear(true, true, color);
+            RenderTexture.active = anterior;
+        }
+
+        /// <summary>Espera a que el video tenga su primer cuadro dibujado (máximo "limite" segundos).</summary>
+        public static IEnumerator EsperarPrimerCuadro(UnityEngine.Video.VideoPlayer vp, float limite = 2f)
+        {
+            float fin = Time.unscaledTime + limite;
+            while (vp != null && vp.frame < 1 && Time.unscaledTime < fin) yield return null;
+        }
+
         /// <summary>Anima un valor de 0 a 1 durante "duracion" segundos.</summary>
         public static IEnumerator Animar(float duracion, Action<float> paso, Func<float, float> curva = null)
         {

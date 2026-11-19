@@ -60,6 +60,7 @@ namespace SendaVR
             if (video != null && video.clip != null)
             {
                 video.isLooping = false;
+                PantallaBase.LimpiarTextura(video.targetTexture, Color.black);
                 video.Prepare();
                 float limite = Time.unscaledTime + 5f;
                 while (!video.isPrepared && Time.unscaledTime < limite) yield return null;

@@ -20,6 +20,9 @@ namespace SendaVR
 
         void Start()
         {
+            // Borra el último cuadro guardado de la prueba anterior
+            if (bucle != null) PantallaBase.LimpiarTextura(bucle.targetTexture, Color.black);
+            else if (intro != null) PantallaBase.LimpiarTextura(intro.targetTexture, Color.black);
             if (bucle != null) bucle.Prepare();
             if (TieneIntro) intro.Prepare();
             else IntroTerminada = true;

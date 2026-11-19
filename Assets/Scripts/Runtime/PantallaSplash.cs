@@ -87,6 +87,7 @@ namespace SendaVR
             texto.gameObject.SetActive(false);
             if (capaVideo != null) capaVideo.SetActive(true);
             grupo.alpha = 0f;
+            LimpiarTextura(videoLogo.targetTexture, Color.white);
 
             videoLogo.isLooping = false;
             videoLogo.Prepare();
@@ -97,6 +98,7 @@ namespace SendaVR
             VideoPlayer.EventHandler alTerminar = _ => termino = true;
             videoLogo.loopPointReached += alTerminar;
             videoLogo.Play();
+            yield return EsperarPrimerCuadro(videoLogo);
             yield return Animar(duracionFundido, t => grupo.alpha = t);
 
             limite = Time.unscaledTime + (float)videoLogo.clip.length + 3f;
