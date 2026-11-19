@@ -1,0 +1,498 @@
+using System.Collections.Generic;
+using System.Globalization;
+using System.IO;
+using System.Linq;
+using System.Text;
+using TMPro;
+using UnityEditor;
+using UnityEditor.SceneManagement;
+using UnityEngine;
+using UnityEngine.SceneManagement;
+using UnityEngine.UI;
+
+namespace SendaVR.EditorTools
+{
+    /// <summary>
+    /// Menú "Senda.vr > Cuarto": arma la escena del cuarto del estudiante
+    /// a partir del modelo exportado desde Blender (FBX) en Assets/SendaVR/Cuarto.
+    /// </summary>
+    public static partial class ConstructorMenuSenda
+    {
+        const string CarpetaCuarto = Raiz + "/Cuarto";
+        const string EscenaCuarto = Raiz + "/Cuarto.unity";
+        const string EscenaMenu = Raiz + "/Menu.unity";
+        const string NombreEscenaCuarto = "Cuarto";
+
+        // Palabras para reconocer cada objeto por su nombre en Blender (sin tildes, en minúsculas)
+        static readonly Dictionary<TipoObjeto, string[]> Claves = new Dictionary<TipoObjeto, string[]>
+        {
+            { TipoObjeto.Mochila,      new[] { "mochila", "backpack", "bagpack" } },
+            { TipoObjeto.Botella,      new[] { "botella", "bottle", "hydroflask" } },
+            { TipoObjeto.Zapatillas,   new[] { "zapatilla", "zapatillas", "boots", "boot", "shoe", "shoes", "bota", "botas" } },
+            { TipoObjeto.PaloTrekking, new[] { "palotrekking", "palo", "bastones", "baston", "pole", "poles", "trekkingpole", "march" } },
+            { TipoObjeto.Snacks,       new[] { "snack", "snacks", "almond", "almonds", "almendras" } },
+        };
+        static readonly string[] ClavesComputador = { "pantalla", "monitor", "computador", "computer", "pc", "screen" };
+
+        // ================================================================ menú
+
+        [MenuItem("Senda.vr/Cuarto/Construir cuarto", priority = 20)]
+        static void ConstruirCuarto()
+        {
+            if (EditorApplication.isPlayingOrWillChangePlaymode)
+            {
+                EditorUtility.DisplayDialog("Senda.vr", "Detén el Play ▶ antes de construir el cuarto.", "OK");
+                return;
+            }
+
+            var modelo = BuscarModeloCuarto();
+            if (modelo == null)
+            {
+                EditorUtility.DisplayDialog("Senda.vr",
+                    "No encontré el modelo del cuarto.\n\n" +
+                    "1. En Blender: File > Export > FBX.\n" +
+                    "2. Guárdalo dentro de la carpeta del proyecto:\n   " + CarpetaCuarto + "\n" +
+                    "3. Vuelve a ejecutar Senda.vr > Cuarto > Construir cuarto.\n\n" +
+                    "(Mira el LEEME para las opciones de exportación.)", "OK");
+                return;
+            }
+
+            if (File.Exists(EscenaCuarto) &&
+                !EditorUtility.DisplayDialog("Senda.vr",
+                    "Ya existe la escena Cuarto. ¿Reconstruirla desde cero?\n(Los cambios hechos a mano en esa escena se pierden.)",
+                    "Reconstruir", "Cancelar"))
+                return;
+
+            if (!EditorSceneManager.SaveCurrentModifiedScenesIfUserWantsTo()) return;
+
+            PrepararImportacion(modelo);
+            ConfigurarImportadores();
+            fuente = BuscarFuente();
+
+            var escena = EditorSceneManager.NewScene(NewSceneSetup.DefaultGameObjects, NewSceneMode.Single);
+
+            // 1) El cuarto
+            var prefab = AssetDatabase.LoadAssetAtPath<GameObject>(AssetDatabase.GetAssetPath(modelo));
+            var cuarto = (GameObject)PrefabUtility.InstantiatePrefab(prefab, escena);
+            cuarto.name = "Cuarto (" + prefab.name + ")";
+            var caja = Limites(cuarto);
+
+            // 2) Objetos que se pueden tomar y computador
+            var encontrados = new Dictionary<TipoObjeto, Transform>();
+            foreach (var par in Claves)
+            {
+                var t = Buscar(cuarto.transform, par.Value);
+                if (t == null) continue;
+                encontrados[par.Key] = t;
+                HacerTomable(t.gameObject, par.Key);
+            }
+            var pantalla = Buscar(cuarto.transform, ClavesComputador);
+            if (pantalla != null) HacerComputador(pantalla.gameObject);
+
+            // 3) Luz extra en el centro del cuarto (el modelo viene sin luces de Unity)
+            var luz = new GameObject("Luz del cuarto").AddComponent<Light>();
+            luz.type = LightType.Point;
+            luz.transform.position = new Vector3(caja.center.x, caja.max.y - 0.4f, caja.center.z);
+            luz.range = Mathf.Max(caja.size.x, caja.size.z) * 1.2f;
+            luz.intensity = 2f;
+            luz.shadows = LightShadows.Soft;
+
+            // 4) Jugador
+            var jugador = CrearJugadorEn(PuntoInicio(cuarto.transform, caja), out var cam);
+
+            // 5) Interfaz: lista de la mochila, mira y ventana de objeto
+            CrearEventSystem(false);
+            var inventario = CrearHud(cam, out var mira, out var etiqueta, out var grupoEtiqueta);
+            CrearVentanaObjeto();
+            var interaccion = cam.gameObject.AddComponent<InteraccionJugador>();
+            interaccion.camara = cam;
+            interaccion.mira = mira;
+            interaccion.etiqueta = etiqueta;
+            interaccion.grupoEtiqueta = grupoEtiqueta;
+
+            // 6) Guardar, agregar a Build Profiles y conectar con el menú
+            EditorSceneManager.SaveScene(escena, EscenaCuarto);
+            AgregarABuild();
+            bool conectado = ConectarMenu();
+
+            Selection.activeGameObject = jugador;
+            EditorGUIUtility.PingObject(jugador);
+
+            var informe = new StringBuilder("Cuarto construido y guardado en " + EscenaCuarto + ".\n\n");
+            foreach (TipoObjeto tipo in System.Enum.GetValues(typeof(TipoObjeto)))
+            {
+                bool requerido = tipo != TipoObjeto.Snacks;
+                if (encontrados.TryGetValue(tipo, out var t))
+                    informe.Append("✓ " + TextosObjetos.Nombre(tipo) + "  →  " + t.name + "\n");
+                else if (requerido)
+                    informe.Append("✗ " + TextosObjetos.Nombre(tipo) + "  (no lo encontré)\n");
+            }
+            informe.Append(pantalla != null ? "✓ Computador  →  " + pantalla.name + "\n" : "✗ Computador (no lo encontré)\n");
+            if (encontrados.Count < 4 || pantalla == null)
+                informe.Append("\nPara los que faltan: selecciónalos en la Hierarchy y usa\nSenda.vr > Cuarto > Marcar selección como...\n");
+            informe.Append(conectado
+                ? "\nEl menú ya lleva al cuarto después de la bienvenida."
+                : "\nEscribe \"Cuarto\" en 'Escena Siguiente' de PantallaLogin (escena Menu).");
+            informe.Append("\n\nRevisa que el Jugador haya quedado parado en el suelo y no dentro de un mueble; si no, muévelo y guarda (Ctrl + S).");
+            EditorUtility.DisplayDialog("Senda.vr", informe.ToString(), "OK");
+        }
+
+        [MenuItem("Senda.vr/Cuarto/Marcar selección como.../Mochila", priority = 21)]
+        static void MarcarMochila() => MarcarSeleccion(TipoObjeto.Mochila);
+        [MenuItem("Senda.vr/Cuarto/Marcar selección como.../Botella de agua", priority = 22)]
+        static void MarcarBotella() => MarcarSeleccion(TipoObjeto.Botella);
+        [MenuItem("Senda.vr/Cuarto/Marcar selección como.../Zapatillas", priority = 23)]
+        static void MarcarZapatillas() => MarcarSeleccion(TipoObjeto.Zapatillas);
+        [MenuItem("Senda.vr/Cuarto/Marcar selección como.../Palo de trekking", priority = 24)]
+        static void MarcarPalo() => MarcarSeleccion(TipoObjeto.PaloTrekking);
+        [MenuItem("Senda.vr/Cuarto/Marcar selección como.../Snacks", priority = 25)]
+        static void MarcarSnacks() => MarcarSeleccion(TipoObjeto.Snacks);
+
+        [MenuItem("Senda.vr/Cuarto/Marcar selección como.../Computador", priority = 30)]
+        static void MarcarComputador()
+        {
+            var go = Selection.activeGameObject;
+            if (!ValidarSeleccion(go)) return;
+            Undo.RegisterFullObjectHierarchyUndo(go, "Marcar computador");
+            HacerComputador(go);
+            EditorSceneManager.MarkSceneDirty(go.scene);
+        }
+
+        static void MarcarSeleccion(TipoObjeto tipo)
+        {
+            var go = Selection.activeGameObject;
+            if (!ValidarSeleccion(go)) return;
+            Undo.RegisterFullObjectHierarchyUndo(go, "Marcar " + tipo);
+            HacerTomable(go, tipo);
+            EditorSceneManager.MarkSceneDirty(go.scene);
+            Debug.Log("[Senda.vr] '" + go.name + "' ahora es: " + TextosObjetos.Nombre(tipo) + ". Puedes editar su texto en el Inspector (ObjetoTomable).");
+        }
+
+        static bool ValidarSeleccion(GameObject go)
+        {
+            if (go != null && go.scene.IsValid()) return true;
+            EditorUtility.DisplayDialog("Senda.vr", "Primero selecciona el objeto en la Hierarchy (en la escena Cuarto).", "OK");
+            return false;
+        }
+
+        // ================================================================ objetos
+
+        static void HacerTomable(GameObject go, TipoObjeto tipo)
+        {
+            foreach (var otro in go.GetComponents<ObjetoTomable>()) Object.DestroyImmediate(otro);
+            var obj = go.AddComponent<ObjetoTomable>();
+            obj.tipo = tipo;
+            obj.AplicarTextos();
+            ColliderParaApuntar(go);
+        }
+
+        static void HacerComputador(GameObject go)
+        {
+            if (go.GetComponent<Computador>() == null) go.AddComponent<Computador>();
+            ColliderParaApuntar(go);
+        }
+
+        /// <summary>Caja invisible (trigger) que cubre el objeto, para que sea fácil apuntarle.</summary>
+        static void ColliderParaApuntar(GameObject go)
+        {
+            var caja = Limites(go);
+            if (caja.size == Vector3.zero) return;
+            var col = go.GetComponent<BoxCollider>();
+            if (col == null) col = go.AddComponent<BoxCollider>();
+            col.isTrigger = true;
+            var t = go.transform;
+            col.center = t.InverseTransformPoint(caja.center);
+            var s = t.InverseTransformVector(caja.size);
+            col.size = new Vector3(Mathf.Abs(s.x), Mathf.Abs(s.y), Mathf.Abs(s.z)) * 1.05f;
+        }
+
+        static Bounds Limites(GameObject go)
+        {
+            var renders = go.GetComponentsInChildren<Renderer>(true);
+            if (renders.Length == 0) return new Bounds(go.transform.position, Vector3.zero);
+            var b = renders[0].bounds;
+            foreach (var r in renders) b.Encapsulate(r.bounds);
+            return b;
+        }
+
+        /// <summary>Busca el objeto cuyo nombre coincide, prefiriendo el más alto en la jerarquía.</summary>
+        static Transform Buscar(Transform raiz, string[] claves)
+        {
+            Transform mejor = null;
+            int mejorProfundidad = int.MaxValue;
+            void Recorrer(Transform t, int prof)
+            {
+                if (t != raiz && Coincide(t.name, claves) && prof < mejorProfundidad)
+                {
+                    mejor = t; mejorProfundidad = prof;
+                    return; // no seguir dentro: ya tenemos el objeto completo
+                }
+                foreach (Transform hijo in t) Recorrer(hijo, prof + 1);
+            }
+            Recorrer(raiz, 0);
+            return mejor;
+        }
+
+        static bool Coincide(string nombre, string[] claves)
+        {
+            string n = Normalizar(nombre);
+            var palabras = n.Split(new[] { ' ', '_', '-', '.', '(', ')' }, System.StringSplitOptions.RemoveEmptyEntries);
+            string junto = string.Concat(palabras);
+            foreach (var c in claves)
+            {
+                if (palabras.Contains(c)) return true;              // palabra exacta ("pc", "palo")
+                if (c.Length >= 5 && junto.Contains(c)) return true; // dentro de otra ("hikingbackpack")
+            }
+            return false;
+        }
+
+        static string Normalizar(string s)
+        {
+            var d = s.ToLowerInvariant().Normalize(NormalizationForm.FormD);
+            var sb = new StringBuilder();
+            foreach (var ch in d)
+                if (CharUnicodeInfo.GetUnicodeCategory(ch) != UnicodeCategory.NonSpacingMark) sb.Append(ch);
+            // separar "PaloTrekking" -> "palo trekking" no hace falta: se compara también todo junto
+            return sb.ToString();
+        }
+
+        // ================================================================ modelo
+
+        static GameObject BuscarModeloCuarto()
+        {
+            if (!AssetDatabase.IsValidFolder(CarpetaCuarto))
+            {
+                AssetDatabase.CreateFolder(Raiz, "Cuarto");
+                return null;
+            }
+            var modelos = AssetDatabase.FindAssets("t:Model", new[] { CarpetaCuarto })
+                .Select(AssetDatabase.GUIDToAssetPath)
+                .Distinct()
+                .OrderByDescending(r => { try { return new FileInfo(r).Length; } catch { return 0L; } })
+                .ToList();
+            return modelos.Count == 0 ? null : AssetDatabase.LoadAssetAtPath<GameObject>(modelos[0]);
+        }
+
+        static void PrepararImportacion(GameObject modelo)
+        {
+            string ruta = AssetDatabase.GetAssetPath(modelo);
+            if (AssetImporter.GetAtPath(ruta) is ModelImporter mi && !mi.addCollider)
+            {
+                mi.addCollider = true; // paredes, piso y muebles sólidos
+                mi.SaveAndReimport();
+            }
+
+            // Texturas: máximo 2048 (las originales son enormes) y mapas normales bien marcados
+            foreach (var guid in AssetDatabase.FindAssets("t:Texture2D", new[] { CarpetaCuarto }))
+            {
+                var r = AssetDatabase.GUIDToAssetPath(guid);
+                if (!(AssetImporter.GetAtPath(r) is TextureImporter ti)) continue;
+                bool esNormal = Path.GetFileNameWithoutExtension(r).ToLowerInvariant().Contains("normal");
+                bool cambio = false;
+                if (ti.maxTextureSize > 2048) { ti.maxTextureSize = 2048; cambio = true; }
+                if (esNormal && ti.textureType != TextureImporterType.NormalMap) { ti.textureType = TextureImporterType.NormalMap; cambio = true; }
+                if (cambio) ti.SaveAndReimport();
+            }
+        }
+
+        // ================================================================ jugador
+
+        static Vector3 PuntoInicio(Transform cuarto, Bounds caja)
+        {
+            var marca = Buscar(cuarto, new[] { "spawn", "inicio", "jugadorinicio", "playerstart" });
+            Vector3 desde = marca != null ? marca.position + Vector3.up * 1.5f
+                                           : new Vector3(caja.center.x, caja.max.y - 0.05f, caja.center.z);
+            Physics.SyncTransforms();
+            if (Physics.Raycast(desde, Vector3.down, out var hit, caja.size.y + 3f))
+                return hit.point + Vector3.up * 0.05f;
+            return marca != null ? marca.position : new Vector3(caja.center.x, caja.min.y + 0.05f, caja.center.z);
+        }
+
+        static GameObject CrearJugadorEn(Vector3 pos, out Camera cam)
+        {
+            cam = Camera.main;
+            if (cam == null)
+            {
+                cam = new GameObject("Main Camera").AddComponent<Camera>();
+                cam.tag = "MainCamera";
+                cam.gameObject.AddComponent<AudioListener>();
+            }
+
+            var jugador = new GameObject("Jugador");
+            jugador.transform.position = pos;
+            var cc = jugador.AddComponent<CharacterController>();
+            cc.height = 1.8f; cc.radius = 0.3f; cc.center = new Vector3(0f, 0.9f, 0f);
+            cc.stepOffset = 0.3f; cc.slopeLimit = 50f;
+
+            var offset = new GameObject("CameraOffset").transform;
+            offset.SetParent(jugador.transform, false);
+            offset.localPosition = new Vector3(0f, 1.7f, 0f);
+
+            cam.transform.SetParent(offset, false);
+            cam.transform.localPosition = Vector3.zero;
+            cam.transform.localRotation = Quaternion.identity;
+            cam.nearClipPlane = 0.05f;
+
+            var pc = jugador.AddComponent<PlayerController>();
+            pc.cameraOffset = offset;
+            pc.playerCamera = cam;
+            return jugador;
+        }
+
+        // ================================================================ interfaz
+
+        static Canvas CanvasNuevo(string nombre, int orden)
+        {
+            var go = new GameObject(nombre, typeof(RectTransform));
+            go.layer = LayerMask.NameToLayer("UI");
+            var c = go.AddComponent<Canvas>();
+            c.renderMode = RenderMode.ScreenSpaceOverlay;
+            c.sortingOrder = orden;
+            var esc = go.AddComponent<CanvasScaler>();
+            esc.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
+            esc.referenceResolution = new Vector2(1920, 1080);
+            esc.matchWidthOrHeight = 0.5f;
+            go.AddComponent<GraphicRaycaster>();
+            return c;
+        }
+
+        static Inventario CrearHud(Camera cam, out Image mira, out TextMeshProUGUI etiqueta, out CanvasGroup grupoEtiqueta)
+        {
+            var canvas = CanvasNuevo("Cuarto_HUD", 5);
+            var rt = (RectTransform)canvas.transform;
+            var adapt = canvas.gameObject.AddComponent<CanvasAdaptable>();
+            adapt.seguirCabeza = true;
+            adapt.distancia = 0.8f;
+            adapt.escalaVR = 0.00045f;
+
+            // Lista de la mochila (arriba a la izquierda)
+            var lista = Panel("Lista mochila", rt, 40, 40, 400, 230);
+            var textoLista = Txt("Texto", lista, "Mochila 0/4", 26, SendaEstilo.Blanco, false, TextAlignmentOptions.TopLeft);
+            Estirar(textoLista.rectTransform, 28, 20, 20, 22);
+            textoLista.lineSpacing = 8;
+
+            // Mira (centro)
+            mira = Img("Mira", rt, Spr("circulo"), new Color(1f, 1f, 1f, 0.7f));
+            Centro(mira.rectTransform, 0, 0, 14, 14);
+            mira.raycastTarget = false;
+
+            // Nombre del objeto apuntado
+            var fondoEtiqueta = Img("Etiqueta", rt, Spr("pildora"), new Color(0f, 0f, 0f, 0.6f));
+            Centro(fondoEtiqueta.rectTransform, 0, -80, 460, 92);
+            fondoEtiqueta.raycastTarget = false;
+            grupoEtiqueta = fondoEtiqueta.gameObject.AddComponent<CanvasGroup>();
+            grupoEtiqueta.alpha = 0f;
+            grupoEtiqueta.blocksRaycasts = false;
+            etiqueta = Txt("Texto", fondoEtiqueta.rectTransform, "", 30, SendaEstilo.Blanco, false, TextAlignmentOptions.Center);
+            Estirar(etiqueta.rectTransform, 20, 6, 20, 6);
+
+            // Aviso (abajo)
+            var aviso = Img("Aviso", rt, Spr("pildora"), new Color(SendaEstilo.Naranja.r, SendaEstilo.Naranja.g, SendaEstilo.Naranja.b, 0.95f));
+            Centro(aviso.rectTransform, 0, -400, 1000, 80);
+            aviso.raycastTarget = false;
+            var grupoAviso = aviso.gameObject.AddComponent<CanvasGroup>();
+            grupoAviso.blocksRaycasts = false;
+            var textoAviso = Txt("Texto", aviso.rectTransform, "", 28, SendaEstilo.Blanco, true, TextAlignmentOptions.Center);
+            Estirar(textoAviso.rectTransform, 30, 0, 30, 0);
+
+            var inv = canvas.gameObject.AddComponent<Inventario>();
+            inv.textoLista = textoLista;
+            inv.textoAviso = textoAviso;
+            inv.grupoAviso = grupoAviso;
+            return inv;
+        }
+
+        static VentanaObjeto CrearVentanaObjeto()
+        {
+            var canvas = CanvasNuevo("Cuarto_Ventana", 20);
+            var rt = (RectTransform)canvas.transform;
+            var grupo = canvas.gameObject.AddComponent<CanvasGroup>();
+
+            var oscuro = Img("Oscurecer", rt, null, new Color(0f, 0f, 0f, 0.45f));
+            Estirar(oscuro.rectTransform);
+
+            var adapt = canvas.gameObject.AddComponent<CanvasAdaptable>();
+            adapt.seguirCabeza = false;
+            adapt.distancia = 1.3f;
+            adapt.escalaVR = 0.0007f;
+            adapt.soloPC = new[] { oscuro.gameObject };
+
+            // Panel 1100 x 620 en el centro (mismo estilo que el login)
+            var panelImg = Img("Panel", rt, Spr("panel_redondeado"), SendaEstilo.Panel);
+            var panel = panelImg.rectTransform;
+            Centro(panel, 0, 0, 1100, 620);
+
+            var marco = Img("Marco vista", panel, Spr("panel_redondeado"), new Color(1f, 1f, 1f, 0.06f));
+            Figma(marco.rectTransform, 40, 50, 440, 440);
+            var vista = Nuevo("Vista objeto", marco.rectTransform).gameObject.AddComponent<RawImage>();
+            Estirar(vista.rectTransform, 10, 10, 10, 10);
+            vista.raycastTarget = false;
+
+            var titulo = Txt("Titulo", panel, "Objeto", 44, SendaEstilo.Blanco, true, TextAlignmentOptions.TopLeft);
+            Figma(titulo.rectTransform, 520, 50, 540, 64);
+            var linea = Img("Linea", panel, null, SendaEstilo.Naranja);
+            Figma(linea.rectTransform, 522, 122, 80, 5);
+            var desc = Txt("Descripcion", panel, "", 26, SendaEstilo.Blanco, false, TextAlignmentOptions.TopLeft);
+            Figma(desc.rectTransform, 520, 150, 540, 320);
+            desc.enableAutoSizing = true; desc.fontSizeMin = 18; desc.fontSizeMax = 26;
+            desc.lineSpacing = 6;
+
+            var principal = Boton("Boton guardar", panel, 520, 506, 330, 70, "Guardar en la mochila", SendaEstilo.Naranja, SendaEstilo.NaranjaIntenso, 26);
+            var cerrar = Boton("Boton cerrar", panel, 866, 506, 194, 70, "Cerrar", SendaEstilo.Azul, SendaEstilo.Azul * 1.12f, 26);
+            var ayuda = Txt("Ayuda", panel, "", 20, SendaEstilo.TextoSuave, false, TextAlignmentOptions.Center);
+            Figma(ayuda.rectTransform, 40, 512, 440, 60);
+
+            var v = canvas.gameObject.AddComponent<VentanaObjeto>();
+            v.grupo = grupo;
+            v.panel = panel;
+            v.vista = vista;
+            v.titulo = titulo;
+            v.descripcion = desc;
+            v.ayuda = ayuda;
+            v.botonPrincipal = principal;
+            v.textoBotonPrincipal = principal.GetComponentInChildren<TextMeshProUGUI>();
+            v.botonCerrar = cerrar;
+            grupo.alpha = 0f;
+            grupo.blocksRaycasts = false;
+            return v;
+        }
+
+        // ================================================================ build y menú
+
+        static void AgregarABuild()
+        {
+            var lista = EditorBuildSettings.scenes.ToList();
+            void Asegurar(string ruta, int indice)
+            {
+                if (!File.Exists(ruta)) return;
+                lista.RemoveAll(s => s.path == ruta);
+                lista.Insert(Mathf.Min(indice, lista.Count), new EditorBuildSettingsScene(ruta, true));
+            }
+            Asegurar(EscenaMenu, 0);
+            Asegurar(EscenaCuarto, 1);
+            var sendero = AssetDatabase.FindAssets("OutdoorsScene t:Scene").Select(AssetDatabase.GUIDToAssetPath).FirstOrDefault();
+            if (sendero != null && lista.All(s => s.path != sendero)) lista.Add(new EditorBuildSettingsScene(sendero, true));
+            EditorBuildSettings.scenes = lista.ToArray();
+        }
+
+        /// <summary>Abre la escena Menu, escribe "Cuarto" en PantallaLogin > Escena Siguiente y la guarda.</summary>
+        static bool ConectarMenu()
+        {
+            if (!File.Exists(EscenaMenu)) return false;
+            var actual = SceneManager.GetActiveScene();
+            var menu = EditorSceneManager.OpenScene(EscenaMenu, OpenSceneMode.Additive);
+            bool ok = false;
+            foreach (var raiz in menu.GetRootGameObjects())
+                foreach (var login in raiz.GetComponentsInChildren<PantallaLogin>(true))
+                {
+                    login.escenaSiguiente = NombreEscenaCuarto;
+                    EditorUtility.SetDirty(login);
+                    ok = true;
+                }
+            if (ok) EditorSceneManager.SaveScene(menu);
+            EditorSceneManager.CloseScene(menu, true);
+            SceneManager.SetActiveScene(actual);
+            return ok;
+        }
+    }
+}

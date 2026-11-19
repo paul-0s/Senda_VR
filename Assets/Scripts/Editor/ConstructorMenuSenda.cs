@@ -16,7 +16,7 @@ namespace SendaVR.EditorTools
     /// (splash, términos, inicio de sesión y crear cuenta) con las medidas
     /// de Figma (1920 x 1080). Menú: Senda.vr > ...
     /// </summary>
-    public static class ConstructorMenuSenda
+    public static partial class ConstructorMenuSenda
     {
         const string Raiz = "Assets/SendaVR";
         const string CarpetaSprites = Raiz + "/Sprites";
