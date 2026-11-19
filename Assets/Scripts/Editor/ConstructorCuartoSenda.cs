@@ -77,6 +77,19 @@ namespace SendaVR.EditorTools
             cuarto.name = "Cuarto (" + prefab.name + ")";
             var caja = Limites(cuarto);
 
+            // Aviso si algo vino con la escala mal (pasa con "Apply Transform" en modelos de Sketchfab)
+            var diminutos = cuarto.transform.Cast<Transform>()
+                .Where(h => h.GetComponentInChildren<Renderer>(true) != null)
+                .Where(h => { var s = Limites(h.gameObject).size; return Mathf.Max(s.x, s.y, s.z) < 0.03f; })
+                .Select(h => h.name).ToList();
+            if (diminutos.Count > 0)
+                Debug.LogWarning("[Senda.vr] Estos objetos quedaron diminutos (menos de 3 cm): " + string.Join(", ", diminutos) +
+                                 ". Exporta desde Blender con 'Apply Transform' DESMARCADO y 'Apply Scalings: FBX Units Scale'.");
+
+            // Luces que vienen de Blender: solo una luz direccional puede proyectar sombras
+            foreach (var l in cuarto.GetComponentsInChildren<Light>(true))
+                if (l.type == LightType.Directional) l.shadows = LightShadows.None;
+
             // 2) Objetos que se pueden tomar y computador
             var encontrados = new Dictionary<TipoObjeto, Transform>();
             foreach (var par in Claves)
@@ -99,6 +112,7 @@ namespace SendaVR.EditorTools
 
             // 4) Jugador
             var jugador = CrearJugadorEn(PuntoInicio(cuarto.transform, caja), out var cam);
+            MirarHacia(jugador.transform, pantalla != null ? pantalla.GetComponent<Computador>() : null);
 
             // 5) Interfaz: lista de la mochila, mira y ventana de objeto
             CrearEventSystem(false);
@@ -297,15 +311,77 @@ namespace SendaVR.EditorTools
 
         // ================================================================ jugador
 
+        /// <summary>
+        /// Busca un lugar en el piso del cuarto donde quepa el jugador (sin muebles encima),
+        /// lo más cerca posible del centro. Los rayos parten a 1,5 m del suelo para no chocar con el techo.
+        /// Si en Blender hay un objeto vacío llamado "Spawn" o "Inicio", se usa ese lugar.
+        /// </summary>
         static Vector3 PuntoInicio(Transform cuarto, Bounds caja)
         {
-            var marca = Buscar(cuarto, new[] { "spawn", "inicio", "jugadorinicio", "playerstart" });
-            Vector3 desde = marca != null ? marca.position + Vector3.up * 1.5f
-                                           : new Vector3(caja.center.x, caja.max.y - 0.05f, caja.center.z);
             Physics.SyncTransforms();
-            if (Physics.Raycast(desde, Vector3.down, out var hit, caja.size.y + 3f))
-                return hit.point + Vector3.up * 0.05f;
-            return marca != null ? marca.position : new Vector3(caja.center.x, caja.min.y + 0.05f, caja.center.z);
+            const QueryTriggerInteraction sinTriggers = QueryTriggerInteraction.Ignore;
+
+            var marca = Buscar(cuarto, new[] { "spawn", "inicio", "jugadorinicio", "playerstart" });
+            if (marca != null)
+            {
+                if (Physics.Raycast(marca.position + Vector3.up * 0.5f, Vector3.down, out var h, 5f, ~0, sinTriggers))
+                    return h.point + Vector3.up * 0.02f;
+                return marca.position;
+            }
+
+            // Piso aproximado: el punto más bajo que alcanzan rayos desde arriba del centro
+            float alturaRayo = caja.min.y + 1.5f;
+            var golpes = new List<Vector3>();
+            const int n = 21;
+            for (int i = 0; i < n; i++)
+                for (int j = 0; j < n; j++)
+                {
+                    float x = Mathf.Lerp(caja.min.x + 0.4f, caja.max.x - 0.4f, i / (n - 1f));
+                    float z = Mathf.Lerp(caja.min.z + 0.4f, caja.max.z - 0.4f, j / (n - 1f));
+                    if (Physics.Raycast(new Vector3(x, alturaRayo, z), Vector3.down, out var h, 3f, ~0, sinTriggers))
+                        golpes.Add(h.point);
+                }
+            if (golpes.Count == 0) return new Vector3(caja.center.x, caja.min.y + 0.05f, caja.center.z);
+
+            // el piso es la altura más repetida entre los golpes más bajos
+            var ordenados = golpes.Select(g => g.y).OrderBy(y => y).ToList();
+            float piso = ordenados[Mathf.Min(ordenados.Count - 1, ordenados.Count / 10)];
+
+            var centro = new Vector2(caja.center.x, caja.center.z);
+            var libres = golpes
+                .Where(g => Mathf.Abs(g.y - piso) < 0.08f)
+                .Where(g => !Physics.CheckCapsule(g + Vector3.up * 0.4f, g + Vector3.up * 1.7f, 0.35f, ~0, sinTriggers))
+                .OrderBy(g => Vector2.Distance(new Vector2(g.x, g.z), centro))
+                .ToList();
+            var elegido = libres.Count > 0 ? libres[0] : golpes.OrderBy(g => Mathf.Abs(g.y - piso)).First();
+            return elegido + Vector3.up * 0.02f;
+        }
+
+        [MenuItem("Senda.vr/Cuarto/Reubicar jugador en el piso", priority = 40)]
+        static void ReubicarJugador()
+        {
+            if (EditorApplication.isPlayingOrWillChangePlaymode) return;
+            var jugador = Object.FindFirstObjectByType<PlayerController>();
+            var cuarto = SceneManager.GetActiveScene().GetRootGameObjects().FirstOrDefault(g => g.name.StartsWith("Cuarto ("));
+            if (jugador == null || cuarto == null)
+            {
+                EditorUtility.DisplayDialog("Senda.vr", "Abre la escena Cuarto (con su Jugador) primero.", "OK");
+                return;
+            }
+            Undo.RecordObject(jugador.transform, "Reubicar jugador");
+            jugador.transform.position = PuntoInicio(cuarto.transform, Limites(cuarto));
+            MirarHacia(jugador.transform, Object.FindFirstObjectByType<Computador>());
+            EditorSceneManager.MarkSceneDirty(jugador.gameObject.scene);
+            Selection.activeGameObject = jugador.gameObject;
+        }
+
+        /// <summary>Gira al jugador (solo en horizontal) para que mire hacia el computador.</summary>
+        static void MirarHacia(Transform jugador, Component destino)
+        {
+            if (destino == null) return;
+            var dir = destino.transform.position - jugador.position;
+            dir.y = 0f;
+            if (dir.sqrMagnitude > 0.01f) jugador.rotation = Quaternion.LookRotation(dir);
         }
 
         static GameObject CrearJugadorEn(Vector3 pos, out Camera cam)
