@@ -91,14 +91,17 @@ namespace SendaVR.EditorTools
             }
             string rutaMat = CarpetaVideo + "/Bienvenida360_Mat.mat";
             var mat = AssetDatabase.LoadAssetAtPath<Material>(rutaMat);
+            // "UI/Default" funciona igual con el render clásico de Unity y con URP, y permite teñir (fundido a negro)
+            var shader = Shader.Find("UI/Default");
             if (mat == null)
             {
-                var shader = Shader.Find("Universal Render Pipeline/Unlit") ?? Shader.Find("Unlit/Texture");
                 mat = new Material(shader) { name = "Bienvenida360_Mat" };
                 AssetDatabase.CreateAsset(mat, rutaMat);
             }
+            else if (mat.shader != shader) mat.shader = shader;
             mat.mainTexture = rt;
             mat.color = Color.white;
+            mat.renderQueue = 1000; // fondo: se dibuja antes que el logo y los textos
             EditorUtility.SetDirty(mat);
 
             var fondo = new GameObject("Fondo 360");
@@ -209,6 +212,117 @@ namespace SendaVR.EditorTools
                 (fuenteArial == null || !fuenteArial.name.ToLowerInvariant().Contains("arial")
                     ? "\n\nNota: uso Liberation Sans (casi idéntica a Arial). Para Arial exacta, crea un Font Asset de Arial Bold con Window > TextMeshPro > Font Asset Creator y vuelve a construir."
                     : ""), "OK");
+        }
+
+        const string EscenaLogo360 = Raiz + "/Logo360.unity";
+
+        /// <summary>
+        /// Escena con el video 360 del logo hecho en After Effects (logo_360.mp4).
+        /// Solo reproduce el video alrededor del usuario y luego pasa a la Bienvenida 360.
+        /// </summary>
+        [MenuItem("Senda.vr/Bienvenida 360/Construir escena Logo 360 (After Effects)", priority = 16)]
+        static void ConstruirLogo360()
+        {
+            if (EditorApplication.isPlayingOrWillChangePlaymode)
+            {
+                EditorUtility.DisplayDialog("Senda.vr", "Detén el Play ▶ antes de construir.", "OK");
+                return;
+            }
+            var clip = BuscarVideo("logo_360");
+            if (clip == null)
+            {
+                EditorUtility.DisplayDialog("Senda.vr", "No encontré " + CarpetaVideo + "/logo_360.mp4.", "OK");
+                return;
+            }
+            if (File.Exists(EscenaLogo360) &&
+                !EditorUtility.DisplayDialog("Senda.vr", "Ya existe la escena Logo360. ¿Reconstruirla?", "Reconstruir", "Cancelar"))
+                return;
+            if (!EditorSceneManager.SaveCurrentModifiedScenesIfUserWantsTo()) return;
+
+            var escena = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
+            var cam = CrearCamara360();
+
+            string rutaRT = CarpetaVideo + "/Logo360_RT.renderTexture";
+            var rt = AssetDatabase.LoadAssetAtPath<RenderTexture>(rutaRT);
+            if (rt == null)
+            {
+                rt = new RenderTexture((int)clip.width, (int)clip.height, 0) { name = "Logo360_RT" };
+                AssetDatabase.CreateAsset(rt, rutaRT);
+            }
+            var mr = CrearEsfera360(clip, rt, CarpetaVideo + "/Logo360_Mat.mat", cam.transform, 1f, out var vp);
+
+            var control = new GameObject("Logo 360").AddComponent<Bienvenida360>();
+            control.video = vp;
+            control.esfera = mr;
+            control.cabeza = cam.transform;
+            control.duracion = (float)clip.length;
+            control.fundidoFinal = 0.6f;
+            control.escenaSiguiente = File.Exists(EscenaBienvenida360) ? "Bienvenida360"
+                                    : File.Exists(EscenaCuarto) ? NombreEscenaCuarto : "";
+
+            EditorSceneManager.SaveScene(escena, EscenaLogo360);
+            AgregarABuild();
+            AgregarEscenaABuild(EscenaLogo360, 1);
+            EditorUtility.DisplayDialog("Senda.vr",
+                "Escena Logo360 lista. Dale Play para verla (clic + mouse para mirar alrededor).\n" +
+                "Al terminar pasa a: " + (string.IsNullOrEmpty(control.escenaSiguiente) ? "(nada)" : control.escenaSiguiente) + ".", "OK");
+        }
+
+        static Camera CrearCamara360()
+        {
+            var cabeza = new GameObject("Cabeza (mouse en PC)");
+            cabeza.AddComponent<CamaraLibre360>();
+            var camGO = new GameObject("Main Camera");
+            camGO.tag = "MainCamera";
+            camGO.transform.SetParent(cabeza.transform, false);
+            camGO.transform.localPosition = new Vector3(0f, 1.6f, 0f);
+            var cam = camGO.AddComponent<Camera>();
+            cam.clearFlags = CameraClearFlags.SolidColor;
+            cam.backgroundColor = Color.black;
+            cam.nearClipPlane = 0.05f;
+            cam.farClipPlane = 200f;
+            camGO.AddComponent<AudioListener>();
+            var tpd = camGO.AddComponent<TrackedPoseDriver>();
+            tpd.trackingType = TrackedPoseDriver.TrackingType.RotationAndPosition;
+            tpd.positionInput = new InputActionProperty(new InputAction("Posicion cabeza", InputActionType.Value, "<XRHMD>/centerEyePosition", expectedControlType: "Vector3"));
+            tpd.rotationInput = new InputActionProperty(new InputAction("Rotacion cabeza", InputActionType.Value, "<XRHMD>/centerEyeRotation", expectedControlType: "Quaternion"));
+            return cam;
+        }
+
+        static MeshRenderer CrearEsfera360(UnityEngine.Video.VideoClip clip, RenderTexture rt, string rutaMat, Transform seguir, float brillo, out VideoPlayer vp)
+        {
+            var shader = Shader.Find("UI/Default");
+            var mat = AssetDatabase.LoadAssetAtPath<Material>(rutaMat);
+            if (mat == null)
+            {
+                mat = new Material(shader) { name = Path.GetFileNameWithoutExtension(rutaMat) };
+                AssetDatabase.CreateAsset(mat, rutaMat);
+            }
+            else if (mat.shader != shader) mat.shader = shader;
+            mat.mainTexture = rt;
+            mat.color = Color.white;
+            mat.renderQueue = 1000;
+            EditorUtility.SetDirty(mat);
+
+            var fondo = new GameObject("Fondo 360");
+            fondo.AddComponent<MeshFilter>();
+            var mr = fondo.AddComponent<MeshRenderer>();
+            mr.sharedMaterial = mat;
+            mr.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+            mr.receiveShadows = false;
+            var esfera = fondo.AddComponent<EsferaVideo360>();
+            esfera.seguir = seguir;
+            esfera.brillo = brillo;
+            vp = fondo.AddComponent<VideoPlayer>();
+            vp.playOnAwake = false;
+            vp.clip = clip;
+            vp.renderMode = VideoRenderMode.RenderTexture;
+            vp.targetTexture = rt;
+            vp.audioOutputMode = VideoAudioOutputMode.None;
+            vp.waitForFirstFrame = true;
+            vp.skipOnDrop = true;
+            vp.isLooping = false;
+            return mr;
         }
 
         static void AgregarEscenaABuild(string ruta, int indice)

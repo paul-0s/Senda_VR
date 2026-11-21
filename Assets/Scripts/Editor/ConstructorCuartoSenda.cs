@@ -22,6 +22,7 @@ namespace SendaVR.EditorTools
         const string EscenaCuarto = Raiz + "/Cuarto.unity";
         const string EscenaMenu = Raiz + "/Menu.unity";
         const string NombreEscenaCuarto = "Cuarto";
+        const float AlturaOjos = 1.5f;
 
         // Palabras para reconocer cada objeto por su nombre en Blender (sin tildes, en minúsculas)
         static readonly Dictionary<TipoObjeto, string[]> Claves = new Dictionary<TipoObjeto, string[]>
@@ -350,7 +351,7 @@ namespace SendaVR.EditorTools
             var centro = new Vector2(caja.center.x, caja.center.z);
             var libres = golpes
                 .Where(g => Mathf.Abs(g.y - piso) < 0.08f)
-                .Where(g => !Physics.CheckCapsule(g + Vector3.up * 0.4f, g + Vector3.up * 1.7f, 0.35f, ~0, sinTriggers))
+                .Where(g => !Physics.CheckCapsule(g + Vector3.up * 0.35f, g + Vector3.up * 1.4f, 0.32f, ~0, sinTriggers))
                 .OrderBy(g => Vector2.Distance(new Vector2(g.x, g.z), centro))
                 .ToList();
             var elegido = libres.Count > 0 ? libres[0] : golpes.OrderBy(g => Mathf.Abs(g.y - piso)).First();
@@ -397,12 +398,13 @@ namespace SendaVR.EditorTools
             var jugador = new GameObject("Jugador");
             jugador.transform.position = pos;
             var cc = jugador.AddComponent<CharacterController>();
-            cc.height = 1.8f; cc.radius = 0.3f; cc.center = new Vector3(0f, 0.9f, 0f);
+            // El cuarto mide 2,3 m de alto: jugador un poco más bajo (ojos a 1,5 m)
+            cc.height = 1.6f; cc.radius = 0.28f; cc.center = new Vector3(0f, 0.8f, 0f);
             cc.stepOffset = 0.3f; cc.slopeLimit = 50f;
 
             var offset = new GameObject("CameraOffset").transform;
             offset.SetParent(jugador.transform, false);
-            offset.localPosition = new Vector3(0f, 1.7f, 0f);
+            offset.localPosition = new Vector3(0f, AlturaOjos, 0f);
 
             cam.transform.SetParent(offset, false);
             cam.transform.localPosition = Vector3.zero;
@@ -410,6 +412,7 @@ namespace SendaVR.EditorTools
             cam.nearClipPlane = 0.05f;
 
             var pc = jugador.AddComponent<PlayerController>();
+            pc.eyeHeight = AlturaOjos;
             pc.cameraOffset = offset;
             pc.playerCamera = cam;
             return jugador;
