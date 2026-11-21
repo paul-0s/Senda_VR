@@ -21,6 +21,33 @@ namespace SendaVR
         {
             GetComponent<MeshFilter>().sharedMesh = CrearMalla();
             transform.rotation = Quaternion.Euler(0f, rotacion, 0f);
+            AsegurarShader();
+        }
+
+        /// <summary>
+        /// Si el material usa un shader que este proyecto no puede dibujar (se vería rosado),
+        /// lo cambia por "UI/Default", que funciona con el render clásico y con URP.
+        /// </summary>
+        void AsegurarShader()
+        {
+            var r = GetComponent<MeshRenderer>();
+            var m = r.sharedMaterial;
+            var pipeline = UnityEngine.Rendering.GraphicsSettings.currentRenderPipeline;
+            bool esURP = pipeline != null && pipeline.GetType().Name.Contains("Universal");
+            bool malo = m == null || m.shader == null || !m.shader.isSupported ||
+                        (!esURP && m.shader.name.StartsWith("Universal Render Pipeline")); // p. ej. en HDRP
+            if (!malo) return;
+
+            var ui = Shader.Find("UI/Default");
+            if (ui == null) return;
+            var nuevo = new Material(ui) { name = "Bienvenida360_Mat (UI)", renderQueue = 1000 };
+            // la textura es la del reproductor de video de este mismo objeto
+            var vp = GetComponent<UnityEngine.Video.VideoPlayer>();
+            if (vp != null && vp.targetTexture != null) nuevo.mainTexture = vp.targetTexture;
+            else if (m != null) nuevo.mainTexture = m.mainTexture;
+            r.material = nuevo;
+            Debug.Log("[Senda.vr] La esfera 360 usaba un shader no compatible ('" + (m != null ? m.shader.name : "ninguno") +
+                      "'); se cambió a UI/Default.");
         }
 
         void LateUpdate()
