@@ -59,6 +59,9 @@ namespace SendaVR
             var m = new Mesh { name = "Esfera360" };
             m.vertices = vertices;
             m.uv = uvs;
+            var blancos = new Color32[vertices.Length];
+            for (int i = 0; i < blancos.Length; i++) blancos[i] = new Color32(255, 255, 255, 255);
+            m.colors32 = blancos; // el shader UI/Default multiplica por el color de cada vértice
             m.triangles = tris;
             m.RecalculateNormals();
             m.bounds = new Bounds(Vector3.zero, Vector3.one * radio * 2f);

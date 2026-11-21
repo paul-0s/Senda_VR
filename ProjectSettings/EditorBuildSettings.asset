@@ -12,6 +12,9 @@ EditorBuildSettings:
     path: Assets/SendaVR/Cuarto.unity
     guid: d5a8ee664f71322458d51eed085e7ab1
   - enabled: 1
+    path: Assets/SendaVR/Bienvenida360.unity
+    guid: 1b275ed5c7f74414c84e23196fe854d4
+  - enabled: 1
     path: Assets/OutdoorsScene.unity
     guid: 8124e5870f4fd4c779e7a5f994e84ad1
   m_configObjects:
