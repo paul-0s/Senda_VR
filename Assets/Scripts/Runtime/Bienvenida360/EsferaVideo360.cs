@@ -16,13 +16,30 @@ namespace SendaVR
         [Tooltip("Gira el video alrededor del jugador (grados), por si el frente no queda donde quieres.")]
         public float rotacion = 0f;
         public Transform seguir;
+        [Tooltip("Brillo del fondo 360 (1 = video original). Bájalo si se ve muy claro o \"quemado\".")]
+        [Range(0.2f, 1.2f)] public float brillo = 0.65f;
 
         void Awake()
         {
             GetComponent<MeshFilter>().sharedMesh = CrearMalla();
             transform.rotation = Quaternion.Euler(0f, rotacion, 0f);
             AsegurarShader();
+            AplicarBrillo();
         }
+
+        /// <summary>Tiñe el material para bajar el brillo del video (se puede cambiar en Play desde el Inspector).</summary>
+        void AplicarBrillo()
+        {
+            var r = GetComponent<MeshRenderer>();
+            r.material.color = new Color(brillo, brillo, brillo, 1f);
+        }
+
+#if UNITY_EDITOR
+        void OnValidate()
+        {
+            if (Application.isPlaying && GetComponent<MeshRenderer>() != null) AplicarBrillo();
+        }
+#endif
 
         /// <summary>
         /// Si el material usa un shader que este proyecto no puede dibujar (se vería rosado),

@@ -362,7 +362,7 @@ namespace SendaVR.EditorTools
         static void ReubicarJugador()
         {
             if (EditorApplication.isPlayingOrWillChangePlaymode) return;
-            var jugador = Object.FindFirstObjectByType<PlayerController>();
+            var jugador = Object.FindAnyObjectByType<PlayerController>();
             var cuarto = SceneManager.GetActiveScene().GetRootGameObjects().FirstOrDefault(g => g.name.StartsWith("Cuarto ("));
             if (jugador == null || cuarto == null)
             {
@@ -371,7 +371,7 @@ namespace SendaVR.EditorTools
             }
             Undo.RecordObject(jugador.transform, "Reubicar jugador");
             jugador.transform.position = PuntoInicio(cuarto.transform, Limites(cuarto));
-            MirarHacia(jugador.transform, Object.FindFirstObjectByType<Computador>());
+            MirarHacia(jugador.transform, Object.FindAnyObjectByType<Computador>());
             EditorSceneManager.MarkSceneDirty(jugador.gameObject.scene);
             Selection.activeGameObject = jugador.gameObject;
         }

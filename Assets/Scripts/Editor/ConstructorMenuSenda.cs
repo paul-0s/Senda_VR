@@ -892,7 +892,7 @@ namespace SendaVR.EditorTools
 
         static void CrearEventSystem(bool modoVR)
         {
-            if (UnityEngine.Object.FindFirstObjectByType<EventSystem>() != null) return;
+            if (UnityEngine.Object.FindAnyObjectByType<EventSystem>() != null) return;
             var go = new GameObject("EventSystem", typeof(EventSystem));
             Undo.RegisterCreatedObjectUndo(go, "EventSystem");
             if (modoVR && AgregarPorNombre(go, "UnityEngine.XR.Interaction.Toolkit.UI.XRUIInputModule, Unity.XR.Interaction.Toolkit")) return;
