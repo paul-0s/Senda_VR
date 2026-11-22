@@ -38,6 +38,8 @@ namespace SendaVR
         public float fundidoFinal = 0.8f;
         [Tooltip("Escena que se carga al terminar. Debe estar en File > Build Profiles > Scene List.")]
         public string escenaSiguiente = "Cuarto";
+        [Tooltip("Opcional: sonido que parte junto con el video (por ejemplo el viento del logo) y se apaga en el fundido final.")]
+        public AudioSource sonido;
 
         InputAction saltar;
         float t;
@@ -82,6 +84,8 @@ namespace SendaVR
                 video.Play();
                 yield return PantallaBase.EsperarPrimerCuadro(video);
             }
+            if (sonido != null && sonido.clip != null) sonido.Play();
+            float volumenSonido = sonido != null ? sonido.volume : 0f;
 
             float inicioReloj = Time.unscaledTime;
             while (!terminando)
@@ -106,6 +110,7 @@ namespace SendaVR
                 k += Time.unscaledDeltaTime / fundidoFinal;
                 if (mat != null) mat.color = Color.Lerp(desde, Color.black, k);
                 if (grupoTextos != null) grupoTextos.alpha = Mathf.Lerp(alfaTextos, 0f, k);
+                if (sonido != null) sonido.volume = Mathf.Lerp(volumenSonido, 0f, k);
                 yield return null;
             }
             if (video != null) video.Stop();

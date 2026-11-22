@@ -200,7 +200,6 @@ namespace SendaVR.EditorTools
 
             EditorSceneManager.SaveScene(escena, EscenaBienvenida360);
             AgregarABuild();
-            AgregarEscenaABuild(EscenaBienvenida360, 1);
 
             EditorUtility.DisplayDialog("Senda.vr",
                 "Bienvenida 360 lista (" + EscenaBienvenida360 + ").\n\n" +
@@ -257,15 +256,36 @@ namespace SendaVR.EditorTools
             control.cabeza = cam.transform;
             control.duracion = (float)clip.length;
             control.fundidoFinal = 0.6f;
-            control.escenaSiguiente = File.Exists(EscenaBienvenida360) ? "Bienvenida360"
+            control.escenaSiguiente = File.Exists(EscenaInicio360) ? NombreEscenaInicio360
+                                    : File.Exists(EscenaBienvenida360) ? "Bienvenida360"
                                     : File.Exists(EscenaCuarto) ? NombreEscenaCuarto : "";
+
+            // Sonido de viento del logo (sacado del video original de After Effects)
+            bool conViento = AsegurarSonidoLogo(control);
 
             EditorSceneManager.SaveScene(escena, EscenaLogo360);
             AgregarABuild();
-            AgregarEscenaABuild(EscenaLogo360, 1);
             EditorUtility.DisplayDialog("Senda.vr",
                 "Escena Logo360 lista. Dale Play para verla (clic + mouse para mirar alrededor).\n" +
+                (conViento ? "Con sonido de viento (Audio/logo_viento.wav).\n" : "(Sin sonido: no encontré Audio/logo_viento.wav)\n") +
                 "Al terminar pasa a: " + (string.IsNullOrEmpty(control.escenaSiguiente) ? "(nada)" : control.escenaSiguiente) + ".", "OK");
+        }
+
+        /// <summary>Agrega (o actualiza) el sonido de viento en el controlador del logo. Devuelve false si no está el audio.</summary>
+        static bool AsegurarSonidoLogo(Bienvenida360 control)
+        {
+            var viento = AssetDatabase.LoadAssetAtPath<AudioClip>(Raiz + "/Audio/logo_viento.wav");
+            if (viento == null || control == null) return false;
+            var fuenteSonido = control.GetComponent<AudioSource>();
+            if (fuenteSonido == null) fuenteSonido = control.gameObject.AddComponent<AudioSource>();
+            fuenteSonido.clip = viento;
+            fuenteSonido.playOnAwake = false;
+            fuenteSonido.loop = false;
+            fuenteSonido.spatialBlend = 0f;   // se escucha igual en ambos oídos
+            fuenteSonido.volume = 1f;
+            control.sonido = fuenteSonido;
+            EditorUtility.SetDirty(control);
+            return true;
         }
 
         static Camera CrearCamara360()

@@ -27,6 +27,13 @@ namespace SendaVR
             AplicarBrillo();
         }
 
+        /// <summary>Cambia el brillo desde otro script (por ejemplo, al cambiar de video).</summary>
+        public void FijarBrillo(float nuevo)
+        {
+            brillo = nuevo;
+            AplicarBrillo();
+        }
+
         /// <summary>Tiñe el material para bajar el brillo del video (se puede cambiar en Play desde el Inspector).</summary>
         void AplicarBrillo()
         {

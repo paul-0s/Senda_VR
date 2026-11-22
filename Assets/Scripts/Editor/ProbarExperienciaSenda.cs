@@ -1,3 +1,4 @@
+using System.Linq;
 using UnityEditor;
 using UnityEditor.SceneManagement;
 using UnityEngine;
@@ -6,8 +7,8 @@ namespace SendaVR.EditorTools
 {
     /// <summary>
     /// "Senda.vr > ▶ Probar experiencia completa" (tecla F5):
-    /// guarda, y da Play siempre desde la escena Menu, para recorrer todo de corrido:
-    /// Splash → Términos → Login → Bienvenida → Cuarto → Sendero.
+    /// guarda, y da Play desde la primera escena del recorrido (Logo360 si existe; si no, Menu):
+    /// Logo 360 → Términos → Login → Bienvenida 360 → Cuarto → Sendero.
     /// Al detener el Play, el botón Play normal vuelve a funcionar como siempre (escena abierta).
     /// </summary>
     [InitializeOnLoad]
@@ -36,16 +37,17 @@ namespace SendaVR.EditorTools
                 return;
             }
 
-            var menu = AssetDatabase.LoadAssetAtPath<SceneAsset>(EscenaMenu);
-            if (menu == null)
-            {
-                EditorUtility.DisplayDialog("Senda.vr", "No encontré la escena del menú en " + EscenaMenu + ".", "OK");
-                return;
-            }
             if (!EditorSceneManager.SaveCurrentModifiedScenesIfUserWantsTo()) return;
 
-            AgregarABuild(); // Menu, Cuarto y el sendero deben estar en la lista para poder cargarse
-            EditorSceneManager.playModeStartScene = menu;
+            AgregarABuild(); // ordena el recorrido (Logo360 primero si existe; si no, Menu)
+            var primera = EditorBuildSettings.scenes.FirstOrDefault(s => s.enabled);
+            var inicio = primera != null ? AssetDatabase.LoadAssetAtPath<SceneAsset>(primera.path) : null;
+            if (inicio == null)
+            {
+                EditorUtility.DisplayDialog("Senda.vr", "No encontré la escena inicial del recorrido.", "OK");
+                return;
+            }
+            EditorSceneManager.playModeStartScene = inicio;
             SessionState.SetBool(ClaveProbando, true);
             EditorApplication.isPlaying = true;
         }

@@ -26,9 +26,9 @@ namespace SendaVR.EditorTools
 
             AgregarABuild();
             var escenas = EditorBuildSettings.scenes.Where(s => s.enabled && File.Exists(s.path)).Select(s => s.path).ToArray();
-            if (escenas.Length == 0 || escenas[0] != EscenaMenu)
+            if (escenas.Length == 0 || (escenas[0] != EscenaMenu && escenas[0] != EscenaLogo360))
             {
-                EditorUtility.DisplayDialog("Senda.vr", "La primera escena de la lista debe ser " + EscenaMenu + ".", "OK");
+                EditorUtility.DisplayDialog("Senda.vr", "La primera escena de la lista debe ser Logo360 o Menu.", "OK");
                 return;
             }
 

@@ -538,19 +538,24 @@ namespace SendaVR.EditorTools
 
         // ================================================================ build y menú
 
+        /// <summary>
+        /// Ordena las escenas del recorrido en Build Profiles. Si existen las escenas VR 360:
+        /// Logo360 → Inicio360 → Bienvenida360 → Cuarto → sendero (y Menu de PC al final).
+        /// Si no, el recorrido de PC: Menu → Cuarto → sendero.
+        /// </summary>
         static void AgregarABuild()
         {
-            var lista = EditorBuildSettings.scenes.ToList();
-            void Asegurar(string ruta, int indice)
-            {
-                if (!File.Exists(ruta)) return;
-                lista.RemoveAll(s => s.path == ruta);
-                lista.Insert(Mathf.Min(indice, lista.Count), new EditorBuildSettingsScene(ruta, true));
-            }
-            Asegurar(EscenaMenu, 0);
-            Asegurar(EscenaCuarto, 1);
             var sendero = AssetDatabase.FindAssets("OutdoorsScene t:Scene").Select(AssetDatabase.GUIDToAssetPath).FirstOrDefault();
-            if (sendero != null && lista.All(s => s.path != sendero)) lista.Add(new EditorBuildSettingsScene(sendero, true));
+            bool recorrido360 = File.Exists(EscenaLogo360) && File.Exists(EscenaInicio360);
+            var orden = recorrido360
+                ? new[] { EscenaLogo360, EscenaInicio360, EscenaBienvenida360, EscenaCuarto, sendero, EscenaMenu }
+                : new[] { EscenaMenu, EscenaCuarto, sendero };
+
+            var lista = orden.Where(r => !string.IsNullOrEmpty(r) && File.Exists(r))
+                             .Select(r => new EditorBuildSettingsScene(r, true)).ToList();
+            // el resto de escenas que ya estaban en la lista se mantienen al final
+            foreach (var s in EditorBuildSettings.scenes)
+                if (File.Exists(s.path) && lista.All(x => x.path != s.path)) lista.Add(s);
             EditorBuildSettings.scenes = lista.ToArray();
         }
 
